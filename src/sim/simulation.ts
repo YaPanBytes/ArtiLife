@@ -13,9 +13,8 @@ import { DIET_BINS, History, type Sample } from './history';
 import { move } from './physics';
 import { findBiteTarget, resolveBites, wantsToBite } from './predation';
 import { Rng } from './rng';
-import { genomeDistance } from './species';
 import { sense } from './senses';
-import { SpeciesTracker, dietClass } from './species';
+import { SpeciesTracker, dietClass, genomeDistance } from './species';
 import { SpatialHash } from './spatial-hash';
 import { World } from './world';
 
@@ -78,6 +77,12 @@ export class Simulation {
   private xs: Float64Array;
   private ys: Float64Array;
   private readonly neighbours: number[] = [];
+  /** Scratch space for finding mates: who is willing, where they stand, and who is near whom. */
+  private readonly willing: Creature[] = [];
+  private mateXs = new Float64Array(0);
+  private mateYs = new Float64Array(0);
+  private readonly mateHash: SpatialHash;
+  private readonly mateNear: number[] = [];
   /** Scratch space for sharing food: what each creature wants, and total demand per tile. */
   private wants = new Float64Array(0);
   private readonly tileDemand: Float64Array;
@@ -127,6 +132,7 @@ export class Simulation {
       MAX_VISION_RANGE,
       Math.max(initialCount, 16),
     );
+    this.mateHash = new SpatialHash(this.world.width, this.world.height, MAX_VISION_RANGE);
     this.xs = new Float64Array(Math.max(initialCount, 16));
     this.ys = new Float64Array(this.xs.length);
     this.tileDemand = new Float64Array(this.world.width * this.world.height);
@@ -339,37 +345,59 @@ export class Simulation {
    * child between them. Each pays half the birth cost. Each creature mates at most once a tick.
    */
   private reproduceSexually(): void {
-    const { creatures, config } = this;
+    const { creatures, config, world, willing, mateNear } = this;
     const { maxEnergy, birthCost, maxPopulation, mateRange, mateCompatibility } = config.creatures;
-    const willing = creatures.filter(
-      (c) =>
+    willing.length = 0;
+    for (const c of creatures) {
+      if (
         c.outputs[OUT_REPRODUCE] > 0 &&
         c.energy >= c.traits.reproThreshold * maxEnergy &&
-        c.energy > birthCost / 2,
-    );
-    const paired = new Set<Creature>();
+        c.energy > birthCost / 2
+      )
+        willing.push(c);
+    }
+    const count = willing.length;
+    if (count < 2) return;
+    // Look for mates through a grid of the willing, so a crowd of them isn't compared pairwise.
+    if (this.mateXs.length < count) {
+      this.mateXs = new Float64Array(count * 2);
+      this.mateYs = new Float64Array(count * 2);
+    }
+    for (let i = 0; i < count; i++) {
+      this.mateXs[i] = willing[i].x;
+      this.mateYs[i] = willing[i].y;
+    }
+    this.mateHash.build(this.mateXs, this.mateYs, count);
+
+    const paired = new Uint8Array(count);
     const newborns: Creature[] = [];
     const rangeSq = mateRange * mateRange;
-    for (const a of willing) {
+    for (let i = 0; i < count; i++) {
       if (creatures.length + newborns.length >= maxPopulation) break;
-      if (paired.has(a)) continue;
-      let mate: Creature | null = null;
+      if (paired[i]) continue;
+      const a = willing[i];
+      let mate = -1;
       let best = Infinity;
-      for (const b of willing) {
-        if (b === a || paired.has(b)) continue;
-        const d = this.world.distanceSq(a.x, a.y, b.x, b.y);
-        if (d > rangeSq || d >= best) continue;
-        if (genomeDistance(a.genome, b.genome) > mateCompatibility) continue;
-        mate = b;
+      this.mateHash.query(a.x, a.y, mateRange, mateNear);
+      for (const j of mateNear) {
+        if (j === i || paired[j]) continue;
+        const b = willing[j];
+        const d = world.distanceSq(a.x, a.y, b.x, b.y);
+        // Nearest wins; a tie goes to whoever comes first, as if the list were walked in order.
+        if (d > rangeSq || d > best || (d === best && j > mate)) continue;
+        if (genomeDistance(a.genome, b.genome, this.brainKind) > mateCompatibility) continue;
+        mate = j;
         best = d;
       }
-      if (!mate) continue;
-      paired.add(a).add(mate);
+      if (mate < 0) continue;
+      const partner = willing[mate];
+      paired[i] = paired[mate] = 1;
       a.energy -= birthCost / 2;
-      mate.energy -= birthCost / 2;
-      newborns.push(this.birth(a, crossover(a.genome, mate.genome, this.rng, this.brainKind)));
+      partner.energy -= birthCost / 2;
+      newborns.push(this.birth(a, crossover(a.genome, partner.genome, this.rng, this.brainKind)));
     }
     for (const child of newborns) creatures.push(child);
+    willing.length = 0;
   }
 
   /** A child of `parent` from the genome given (the parent's own, or a mix with a mate's), mutated. */

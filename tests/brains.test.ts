@@ -479,6 +479,33 @@ describe('worlds with other brains', () => {
     for (const c of sim.creatures) expect(isValidGenome(c.genome, 'neat')).toBe(true);
   });
 
+  it('judges whether two NEAT creatures can mate by their NEAT genomes', () => {
+    const sim = new Simulation({
+      brain: { type: 'neat' },
+      creatures: { sexual: true, mateRange: 3, initialCount: 0 },
+      terrain: { waterFraction: 0, rockFraction: 0 },
+    });
+    const rng = new Rng(4);
+    const founder = randomGenome(rng, 'neat', sim.innovations);
+    // The same brain missing its first connection: very close kin by NEAT's measure, but
+    // every later gene sits one slot earlier, which a fixed-size comparison would call a mess.
+    const kin = Float32Array.from([
+      ...founder.subarray(0, TRAIT_COUNT),
+      ...encodeNeat(parseNeat(founder.subarray(TRAIT_COUNT)).slice(1)),
+    ]);
+    expect(genomeDifference(founder, kin, 'neat')).toBeLessThan(0.1);
+    expect(genomeDifference(founder, kin, 'mlp')).toBeGreaterThan(0.35);
+    const parents = [founder, kin].map((genome, i) => {
+      const c = new Creature(i, 10 + i * 0.5, 10, 0, 90, genome, null, 0, 'neat');
+      c.outputs[2] = 1; // OUT_REPRODUCE
+      return c;
+    });
+    for (const c of parents) c.traits.reproThreshold = 0;
+    sim.creatures.push(...parents);
+    sim['reproduceSexually']();
+    expect(sim.creatures).toHaveLength(3);
+  });
+
   it('save and load exactly, whichever the brain', () => {
     for (const type of ['recurrent', 'neat']) {
       const make = () =>
