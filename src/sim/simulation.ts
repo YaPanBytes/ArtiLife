@@ -18,6 +18,8 @@ export interface SimStats {
   diedOfAge: number;
 }
 
+export type DeathCause = 'starved' | 'age';
+
 /** Owns the world, the creatures and the clock, and advances them one tick at a time. */
 export class Simulation {
   readonly config: SimConfig;
@@ -26,6 +28,10 @@ export class Simulation {
   creatures: Creature[] = [];
   readonly stats: SimStats = { births: 0, starved: 0, diedOfAge: 0 };
   tick = 0;
+  /** Called after a child is born. Used by the renderer for effects; the sim never reads it. */
+  onBirth?: (child: Creature) => void;
+  /** Called when a creature dies, before it is removed. */
+  onDeath?: (creature: Creature, cause: DeathCause) => void;
   private nextId = 0;
   private readonly hash: SpatialHash;
   private xs: Float64Array;
@@ -144,9 +150,13 @@ export class Simulation {
     const { maxAge } = this.config.creatures;
     const alive: Creature[] = [];
     for (const c of this.creatures) {
-      if (c.energy <= 0) this.stats.starved++;
-      else if (maxAge > 0 && c.age >= maxAge) this.stats.diedOfAge++;
-      else alive.push(c);
+      if (c.energy <= 0) {
+        this.stats.starved++;
+        this.onDeath?.(c, 'starved');
+      } else if (maxAge > 0 && c.age >= maxAge) {
+        this.stats.diedOfAge++;
+        this.onDeath?.(c, 'age');
+      } else alive.push(c);
     }
     this.creatures = alive;
   }
@@ -181,7 +191,7 @@ export class Simulation {
       y = parent.y;
     }
     this.stats.births++;
-    return new Creature(
+    const child = new Creature(
       this.nextId++,
       x,
       y,
@@ -191,5 +201,7 @@ export class Simulation {
       parent.id,
       parent.generation + 1,
     );
+    this.onBirth?.(child);
+    return child;
   }
 }

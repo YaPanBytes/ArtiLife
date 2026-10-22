@@ -42,4 +42,15 @@ describe('resolveConfig', () => {
     expect(() => resolveConfig({ mutation: { rateMultiplier: -1 } })).toThrow(/rateMultiplier/);
     expect(resolveConfig({ mutation: { rateMultiplier: 0 } }).mutation.rateMultiplier).toBe(0);
   });
+
+  it('returns a config that is safe to change without touching the defaults or other configs', () => {
+    const a = resolveConfig();
+    const b = resolveConfig();
+    a.creatures.eatRate = 99;
+    a.food.seasons.enabled = true;
+    expect(DEFAULT_CONFIG.creatures.eatRate).not.toBe(99);
+    expect(DEFAULT_CONFIG.food.seasons.enabled).toBe(false);
+    expect(b.creatures.eatRate).not.toBe(99);
+    expect(b.food.seasons.enabled).toBe(false);
+  });
 });

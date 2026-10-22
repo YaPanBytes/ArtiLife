@@ -4,7 +4,7 @@ An artificial-life ecosystem. Creatures with small neural-net brains and heritab
 
 You change the rules of the world (food supply, metabolic cost, mutation rate, terrain, disasters) and watch what evolves: grazing herds, ambush predators, scavengers, parasites, boom-and-bust cycles, and strategies nobody designed.
 
-> **Status: early development.** Steps 1 to 3 of the [implementation plan](#implementation-plan) are done: the world and food field, creatures with genomes, neural-net brains, vision and movement, and a full life cycle of eating, energy costs, death, reproduction and mutation. Populations now sustain themselves and evolve. There is no real renderer yet, and no predation (step 5). Sections marked _(planned)_ are targets, not features.
+> **Status: early development.** Steps 1 to 4 of the [implementation plan](#implementation-plan) are done: the world and food field, creatures with genomes, neural-net brains, vision and movement, a full life cycle (eating, energy costs, death, reproduction, mutation), and the NES-style pixel renderer with live controls. Populations sustain themselves and evolve, and you can watch it. There is no predation yet (step 5) and no inspector or charts (step 6). Sections marked _(planned)_ are targets, not features.
 
 ## Core idea
 
@@ -68,62 +68,68 @@ All of these are editable while the sim runs:
 - Terrain: walls, water, barriers that split populations
 - Events: drought, plague, meteor, introduce a new creature type
 
-## Visual style _(planned)_
+## Visual style
 
-ArtiLife should look like an 8-bit NES game, with the information density of Dwarf Fortress. References: _The Legend of Zelda_ (NES) for the overworld and HUD, and _Dwarf Fortress_ (ASCII and tileset modes) for the dense, readable status display.
+ArtiLife looks like an 8-bit NES game, with the information density of Dwarf Fortress. References: _The Legend of Zelda_ (NES) for the overworld and HUD, and _Dwarf Fortress_ (ASCII and tileset modes) for the dense, readable status display. Items marked _(planned)_ are not built yet.
 
 **Rendering**
 
-- The game draws to a low-resolution canvas (256×224, the NES resolution) and is scaled up by whole-number factors only, with `image-rendering: pixelated`. No smoothing, no sub-pixel positions, no anti-aliasing.
-- A limited, fixed palette taken from the NES colour set. No gradients, alpha fades or glow effects.
-- The world is drawn from 16×16 tiles, even though the simulation underneath uses continuous positions. Creatures are snapped to the pixel grid when drawn.
+- The game draws to a 256×224 canvas (the NES resolution) and is scaled up by whole-number factors only, with `image-rendering: pixelated`. No smoothing, no sub-pixel positions, no gradients or glow.
+- Every colour comes from the NES 64-colour palette.
+- The world is drawn from 8×8 pixel tiles, one tile per world unit, so about 32×21 tiles are on screen at once. The simulation underneath uses continuous positions; creatures are snapped to whole pixels when drawn.
 
 **World tiles**
 
-- Flat, high-contrast tiles: tan dirt, green bushes and trees as obstacles, blue speckled water, brown rocks. Food plants are small bush or berry sprites that visibly regrow in stages.
-- Large worlds scroll one screen at a time (or follow the camera), with a minimap in the HUD.
+- Tan speckled ground, blue water that shimmers, and brown boulders. Plants grow on the ground in three stages (sprout, tuft, berry bush), so you can see grazed-out and fertile areas.
+- The map scrolls and wraps around. A minimap in the HUD shows the whole world and the part you're looking at.
 
 **Creatures**
 
-- 8×8 or 16×16 sprites with a 2-frame walk animation, flipped for left and right. Larger body genes give larger sprites.
-- Each sprite uses 3 palette colours plus transparency, as on the NES. Colour comes from the genome, snapped to the palette, so related creatures look related.
-- Simple pixel effects for events: a blink on birth, a flash on a bite, a puff on death.
+- 8×8 sprites, or 16×16 for big bodies (the same art at double size), with a 2-frame walk animation, mirrored left and right.
+- Colour comes from the hue gene, snapped to the palette: a light body, a darker shade and a black outline. Related creatures look related.
+- A sparkle when a creature is born and a puff of smoke when one dies.
 
-**HUD**
+**HUD** (Zelda-style header)
 
-- Zelda-style header: a minimap, counters (population, plants, births and deaths), a heart row showing the followed creature's energy, and slots showing its diet and traits.
-- Dwarf Fortress-style status line: season, year and a scrolling event log ("A predator lineage has appeared in the north.").
-- Pixel font (such as Press Start 2P), blue-bordered panels and black backgrounds.
+- Minimap with creature dots and a box for the current view.
+- Counters: population, births, deaths, mean generation, and the tick (or year and season when seasons are on).
+- **B** slot: portrait of the followed creature. **A** slot: its size, speed, vision range and field-of-view genes as four bars.
+- **-LIFE-** hearts: the followed creature's energy, or the population's average when nobody is followed. Ten hearts, in half-heart steps.
+- Pixel font (Press Start 2P), blue-bordered panels, black background.
 
-**Modes**
+**Controls**
 
-- **Tile mode** (default): the NES look described above.
-- **Glyph mode**: toggle to an ASCII view in the Dwarf Fortress style, with letters and symbols in colour on black, for dense data views.
-- **Overlays**: energy, age, lineage colour, diet, food density, drawn as palette-limited tints.
+- Click a creature to follow it (the camera tracks it and its brackets blink). Click empty ground or press `Esc` to let go.
+- Drag or use the arrow keys / `WASD` to scroll. Click the minimap to jump there.
+- `Space` pauses, `.` steps one tick, `[` and `]` change speed (x1 to x32).
+- The side panel has sliders for the world's rules, which change the running simulation immediately: plant regrowth and cap, seasons, the cost of living, moving and seeing, eating rate, birth cost, lifespan, population cap, and mutation rate and size. A "new world" group (water, rock, fertility, starting population) and a seed box apply when you press GO or RND.
+- Open the browser console and type `artilife` to reach the running game, e.g. `artilife.sim.creatures`.
 
-**Tools**
+**Planned**
 
-- Pause, speed control and single-step; click a creature to follow it and inspect its genome and brain graph (live neuron activations).
-- Population and trait charts, and a lineage tree, styled to match (pixel lines, no smoothing).
-- Save, load and export runs; screenshot capture.
-- Optional chiptune sound (off by default).
+- **Glyph mode:** toggle to a Dwarf Fortress-style ASCII view, with letters and symbols in colour on black, for dense data views.
+- **Overlays:** energy, age, lineage colour, diet and food density, drawn as palette-limited tints.
+- **Inspector:** the followed creature's genome and brain graph with live neuron activations.
+- **Dwarf Fortress-style event log** ("A predator lineage has appeared in the north."), plus population and trait charts and a lineage tree.
+- Hit and bite flashes (with predation), save/load of runs, screenshots, and optional chiptune sound.
 
-## Tech _(planned)_
+## Tech
 
-- **TypeScript**, built with **Vite**
-- **Simulation core** has no DOM dependencies and runs in a Web Worker, so it can also run headless in Node for batch experiments and tests
-- **Renderer** draws to a 256×224 Canvas 2D buffer and scales it up by integer factors (pixelated). Sprites and tiles come from a small sprite sheet defined in code or PNG, using a fixed NES palette. WebGL is only needed if creature counts demand it
-- **Tests** with Vitest, including determinism and energy-conservation checks
+- **TypeScript**, built with **Vite**.
+- **Simulation core** (`src/sim/`) has no DOM dependencies, so it also runs headless in Node for batch experiments and tests. It currently runs on the browser's main thread, which is fine at a few hundred creatures; moving it to a Web Worker is an option if populations get much bigger.
+- **Renderer** draws to a 256×224 Canvas 2D buffer and scales it up by integer factors (pixelated). Sprites and tiles are pixel patterns written as text in `src/render/art.ts`, coloured from the NES palette at start-up. WebGL is only needed if creature counts demand it.
+- **Tests** with Vitest, including determinism and energy-conservation checks. The pure rendering and UI logic (palette, sprite art, camera, HUD helpers, controls) is unit-tested; the canvas drawing and DOM wiring are checked by hand in a browser.
 
-Planned layout:
+Layout:
 
 ```
 src/
   sim/        # world, creatures, brain, genome, energy rules (no DOM)
-  render/     # canvas renderer, overlays
-  ui/         # controls, inspector, charts
-  worker/     # sim loop in a Web Worker
+  render/     # palette, pixel art, camera, canvas renderer
+  ui/         # control panel, input, styles
   cli/        # headless runner for experiments
+  game.ts     # frame loop tying sim, renderer, panel and input together
+  main.ts     # page entry point
 tests/
 ```
 
@@ -132,7 +138,7 @@ tests/
 1. **Foundation** _(done)_: project scaffold, seeded RNG, config schema, world grid and food field, spatial hash.
 2. **Creatures and brains** _(done)_: genome, trait decoding, MLP brain, vision rays, movement physics.
 3. **Energy and life cycle** _(done)_: eating, metabolism, death, asexual reproduction, mutation. First evolving run.
-4. **Renderer and controls**: pixel renderer (NES palette, tile map, creature sprites with walk frames), Zelda-style HUD with minimap, pause/speed, live parameter sliders.
+4. **Renderer and controls** _(done)_: pixel renderer (NES palette, tile map, creature sprites with walk frames), Zelda-style HUD with minimap, pause/speed, live parameter sliders.
 5. **Predation and diet**: bite mechanic, diet gene, meat vs. plant efficiency. This is where predators can first appear.
 6. **Analysis tools**: inspector, brain viewer, charts, lineage tracking, event log, glyph (ASCII) mode.
 7. **Richer worlds**: terrain, seasons, events, sexual reproduction, creature signals.
@@ -157,7 +163,7 @@ npm run dev       # start the dev server (currently shows a placeholder map view
 npm run build     # type-check and build for production
 ```
 
-There is no real renderer yet. `npm run dev` shows a placeholder view of the map with creatures eating, dying and reproducing, and a population counter.
+`npm run dev` opens the game. Click a creature to follow it, drag to scroll, and use the panel to change the world's rules while it runs (see [Controls](#visual-style)). You can also open it with `?seed=7` for a particular world, `?warmup=3000` to skip ahead 3000 ticks first, and `?paused=1`.
 
 To watch evolution as numbers, run the headless simulator:
 

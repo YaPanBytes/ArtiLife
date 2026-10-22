@@ -106,14 +106,15 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 
 function merge<T>(base: T, overrides: unknown, path: string): T {
-  if (overrides === undefined) return base;
+  // Always return copies, so changing a resolved config never touches the defaults.
+  if (overrides === undefined) return structuredClone(base);
   if (!isPlainObject(base) || !isPlainObject(overrides)) {
     if (typeof overrides !== typeof base) {
       throw new TypeError(`config.${path}: expected ${typeof base}, got ${typeof overrides}`);
     }
     return overrides as T;
   }
-  const out: Record<string, unknown> = { ...base };
+  const out = structuredClone(base) as Record<string, unknown>;
   for (const key of Object.keys(overrides)) {
     if (!(key in base))
       throw new RangeError(`config.${path ? path + '.' : ''}${key}: unknown option`);

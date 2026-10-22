@@ -51,4 +51,19 @@ describe('Simulation', () => {
     const sim = new Simulation({ creatures: { initialCount: 0 } });
     expect(() => sim.step()).not.toThrow();
   });
+
+  it('reports births and deaths through its hooks', () => {
+    const sim = new Simulation({ seed: 3, creatures: { initialCount: 60, maxAge: 300 } });
+    const born: number[] = [];
+    const died: string[] = [];
+    sim.onBirth = (c) => born.push(c.id);
+    sim.onDeath = (_, cause) => died.push(cause);
+    for (let i = 0; i < 400; i++) sim.step();
+    expect(born.length).toBe(sim.stats.births);
+    expect(died.filter((c) => c === 'starved').length).toBe(sim.stats.starved);
+    expect(died.filter((c) => c === 'age').length).toBe(sim.stats.diedOfAge);
+    expect(born.length).toBeGreaterThan(0);
+    expect(died.length).toBeGreaterThan(0);
+    expect(new Set(born).size).toBe(born.length);
+  });
 });
