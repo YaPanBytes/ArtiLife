@@ -44,10 +44,21 @@ function drawCreatures(): void {
   }
 }
 
+const TICKS_PER_FRAME = 3;
+
+function drawLabel(): void {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, 92, 10);
+  ctx.fillStyle = '#fff';
+  ctx.font = '8px monospace';
+  ctx.fillText(`pop ${sim.creatures.length}  tick ${sim.tick}`, 2, 8);
+}
+
 function frame(): void {
-  sim.step();
+  for (let i = 0; i < TICKS_PER_FRAME; i++) sim.step();
   drawWorld();
   drawCreatures();
+  drawLabel();
   requestAnimationFrame(frame);
 }
 frame();

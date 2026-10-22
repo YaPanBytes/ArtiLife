@@ -22,6 +22,9 @@ export class Creature {
     public heading: number,
     public energy: number,
     readonly genome: Float32Array,
+    readonly parentId: number | null = null,
+    /** Generations since the founders: 0 for the first creatures, parent + 1 for children. */
+    readonly generation = 0,
   ) {
     if (genome.length !== GENOME_LENGTH) {
       throw new RangeError(`genome needs ${GENOME_LENGTH} genes, got ${genome.length}`);

@@ -1,7 +1,8 @@
 import { resolveConfig, type DeepPartial, type SimConfig } from '../src/sim/config';
 import { Creature } from '../src/sim/creature';
-import { GENOME_LENGTH } from '../src/sim/genome';
+import { GENOME_LENGTH, TRAIT_ORDER, type Traits } from '../src/sim/genome';
 import { Rng } from '../src/sim/rng';
+import { Simulation } from '../src/sim/simulation';
 import { World } from '../src/sim/world';
 
 /** A plain, empty, all-ground world for sensor and physics tests. */
@@ -15,17 +16,30 @@ export function emptyWorld(overrides: DeepPartial<SimConfig> = {}) {
   return { config, world: new World(config, new Rng(config.seed)) };
 }
 
-/** A creature with a zeroed genome (mid-range traits are set by `genes`). */
+/**
+ * A creature whose genome is all zeros except the trait genes given. Trait genes are
+ * normalised: 0 -> the trait's minimum, 1 -> its maximum. Unspecified ones default to 0.5.
+ * An all-zero brain outputs 0 everywhere: no turning, half thrust, no reproducing.
+ */
 export function makeCreature(
   x: number,
   y: number,
   heading = 0,
-  genes: Partial<Record<'size' | 'maxSpeed' | 'visionRange' | 'visionFov' | 'hue', number>> = {},
+  genes: Partial<Record<keyof Traits, number>> = {},
   energy = 50,
 ) {
   const genome = new Float32Array(GENOME_LENGTH);
-  // Trait genes are normalised: 0 -> min, 1 -> max. Defaults: size 1.25, speed ~0.225, range 6, fov ~2.3.
-  const order = ['size', 'maxSpeed', 'visionRange', 'visionFov', 'hue'] as const;
-  order.forEach((name, i) => (genome[i] = genes[name] ?? 0.5));
+  TRAIT_ORDER.forEach((name, i) => (genome[i] = genes[name] ?? 0.5));
   return new Creature(0, x, y, heading, energy, genome);
+}
+
+/** A simulation with no creatures, flat ground and no food, for testing one rule at a time. */
+export function lifeSim(overrides: DeepPartial<SimConfig> = {}) {
+  return new Simulation({
+    world: { width: 32, height: 32 },
+    ...overrides,
+    terrain: { waterFraction: 0, rockFraction: 0, fertilityContrast: 0, ...overrides.terrain },
+    food: { initialFill: 0, regrowRate: 0, ...overrides.food },
+    creatures: { initialCount: 0, ...overrides.creatures },
+  });
 }

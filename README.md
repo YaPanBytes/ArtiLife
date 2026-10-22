@@ -4,7 +4,7 @@ An artificial-life ecosystem. Creatures with small neural-net brains and heritab
 
 You change the rules of the world (food supply, metabolic cost, mutation rate, terrain, disasters) and watch what evolves: grazing herds, ambush predators, scavengers, parasites, boom-and-bust cycles, and strategies nobody designed.
 
-> **Status: early development.** Steps 1 and 2 of the [implementation plan](#implementation-plan) are done: the world and food field, plus creatures with genomes, neural-net brains, vision and movement. Creatures move and sense, but they don't yet eat, use energy, die or reproduce, and there is no real renderer yet. Sections marked _(planned)_ are targets, not features.
+> **Status: early development.** Steps 1 to 3 of the [implementation plan](#implementation-plan) are done: the world and food field, creatures with genomes, neural-net brains, vision and movement, and a full life cycle of eating, energy costs, death, reproduction and mutation. Populations now sustain themselves and evolve. There is no real renderer yet, and no predation (step 5). Sections marked _(planned)_ are targets, not features.
 
 ## Core idea
 
@@ -37,14 +37,14 @@ Each creature has:
 
 **Brain inputs:** 5 vision rays across the field of view, each reporting nearby food, nearby obstacles (water and rock), the nearest creature and its size relative to the viewer. Then own energy, own speed, food on the current tile, and 2 memory neurons. Colour perception comes later, with signals.
 
-**Brain outputs:** turn and thrust, plus the 2 memory values for the next tick. Bite/eat, reproduce and an optional signal (a colour or sound others can perceive) are added in later steps.
+**Brain outputs:** turn, thrust and reproduce, plus the 2 memory values for the next tick. Bite and an optional signal (a colour or sound others can perceive) are added in later steps.
 
 ### Energy economy
 
-- Gain: eating plants, or biting other creatures. Diet efficiency is a gene, so an animal that is good at plants is bad at meat.
-- Cost: base metabolism (scales with size), movement (scales with speed²), brain size, and bite attempts.
-- Death: energy reaches zero, old age, or being eaten.
-- Reproduction: costs energy and splits it with the child. The child's genome is the parent's plus mutation.
+- **Gain:** a creature eats the plants on the tile it stands on, automatically, up to an appetite that grows with its size and stops at the energy cap. When several creatures share a tile with too little food, each gets a share in proportion to its appetite. Eating other creatures (with a diet gene, so plant specialists are bad at meat) arrives with predation in step 5.
+- **Cost per tick:** staying alive (grows with size), moving (grows with speed² and size) and seeing (grows with vision range). Bigger bodies eat more but pay more, and faster or farther-seeing creatures pay for it, so no trait is free.
+- **Death:** energy reaches zero, or old age (configurable, can be turned off). Being eaten arrives in step 5.
+- **Reproduction:** the brain has a reproduce output. A creature reproduces when that output is positive, its energy is above its own threshold (a gene), and the population cap hasn't been reached. The parent pays a fixed energy cost and only part of it reaches the child, so reproduction always loses energy.
 
 ### Evolution
 
@@ -131,7 +131,7 @@ tests/
 
 1. **Foundation** _(done)_: project scaffold, seeded RNG, config schema, world grid and food field, spatial hash.
 2. **Creatures and brains** _(done)_: genome, trait decoding, MLP brain, vision rays, movement physics.
-3. **Energy and life cycle**: eating, metabolism, death, asexual reproduction, mutation. First evolving run.
+3. **Energy and life cycle** _(done)_: eating, metabolism, death, asexual reproduction, mutation. First evolving run.
 4. **Renderer and controls**: pixel renderer (NES palette, tile map, creature sprites with walk frames), Zelda-style HUD with minimap, pause/speed, live parameter sliders.
 5. **Predation and diet**: bite mechanic, diet gene, meat vs. plant efficiency. This is where predators can first appear.
 6. **Analysis tools**: inspector, brain viewer, charts, lineage tracking, event log, glyph (ASCII) mode.
@@ -157,7 +157,15 @@ npm run dev       # start the dev server (currently shows a placeholder map view
 npm run build     # type-check and build for production
 ```
 
-There is nothing to watch yet beyond a placeholder view: the generated map with regrowing food, and creatures with random brains wandering around it. Eating, energy and evolution arrive in step 3.
+There is no real renderer yet. `npm run dev` shows a placeholder view of the map with creatures eating, dying and reproducing, and a population counter.
+
+To watch evolution as numbers, run the headless simulator:
+
+```sh
+npm run sim -- --seed 1 --ticks 20000 --every 1000
+```
+
+It prints one row every N ticks: population, births, deaths by starvation and by old age, mean generation and energy, and the mean of each trait.
 
 ## License
 

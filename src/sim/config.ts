@@ -21,6 +21,28 @@ export interface SimConfig {
     maxTurnRate: number;
     /** How quickly speed follows the commanded speed (0-1 per tick). */
     speedInertia: number;
+    /** Plant energy a size-1 creature can eat per tick. Bigger creatures eat more. */
+    eatRate: number;
+    /** Energy burned per tick just to stay alive, per unit of size. */
+    basalCost: number;
+    /** Energy burned per tick by moving: moveCost * speed^2 * size. */
+    moveCost: number;
+    /** Energy burned per tick per tile of vision range. */
+    senseCost: number;
+    /** Age in ticks at which a creature dies of old age (0 = never). */
+    maxAge: number;
+    /** Energy the parent pays to reproduce. */
+    birthCost: number;
+    /** Fraction of the birth cost that reaches the child (the rest is lost). */
+    birthEfficiency: number;
+    /** No births while the population is at this size. */
+    maxPopulation: number;
+  };
+  mutation: {
+    /** Standard deviation of a gene change, on the gene's own scale. */
+    magnitude: number;
+    /** Scales every creature's own mutation rate. 0 turns mutation off. */
+    rateMultiplier: number;
   };
   terrain: {
     /** Approximate size of terrain features, in tiles. */
@@ -60,7 +82,16 @@ export const DEFAULT_CONFIG: SimConfig = {
     maxEnergy: 100,
     maxTurnRate: 0.3,
     speedInertia: 0.3,
+    eatRate: 1,
+    basalCost: 0.04,
+    moveCost: 0.6,
+    senseCost: 0.003,
+    maxAge: 3000,
+    birthCost: 40,
+    birthEfficiency: 0.5,
+    maxPopulation: 800,
   },
+  mutation: { magnitude: 0.1, rateMultiplier: 1 },
   terrain: { scale: 16, waterFraction: 0.1, rockFraction: 0.05, fertilityContrast: 0.6 },
   food: {
     maxPerTile: 10,
@@ -118,6 +149,25 @@ export function resolveConfig(overrides: DeepPartial<SimConfig> = {}): SimConfig
     isFraction(c.creatures.speedInertia) && c.creatures.speedInertia > 0,
     'creatures.speedInertia: must be above 0 and at most 1',
   );
+  check(c.creatures.eatRate >= 0, 'creatures.eatRate: must not be negative');
+  check(c.creatures.basalCost >= 0, 'creatures.basalCost: must not be negative');
+  check(c.creatures.moveCost >= 0, 'creatures.moveCost: must not be negative');
+  check(c.creatures.senseCost >= 0, 'creatures.senseCost: must not be negative');
+  check(
+    Number.isInteger(c.creatures.maxAge) && c.creatures.maxAge >= 0,
+    'creatures.maxAge: must be a non-negative integer',
+  );
+  check(c.creatures.birthCost > 0, 'creatures.birthCost: must be positive');
+  check(
+    isFraction(c.creatures.birthEfficiency),
+    'creatures.birthEfficiency: must be between 0 and 1',
+  );
+  check(
+    Number.isInteger(c.creatures.maxPopulation) && c.creatures.maxPopulation >= 0,
+    'creatures.maxPopulation: must be a non-negative integer',
+  );
+  check(c.mutation.magnitude >= 0, 'mutation.magnitude: must not be negative');
+  check(c.mutation.rateMultiplier >= 0, 'mutation.rateMultiplier: must not be negative');
   check(c.terrain.scale >= 1, 'terrain.scale: must be at least 1');
   check(isFraction(c.terrain.waterFraction), 'terrain.waterFraction: must be between 0 and 1');
   check(isFraction(c.terrain.rockFraction), 'terrain.rockFraction: must be between 0 and 1');

@@ -32,4 +32,14 @@ describe('resolveConfig', () => {
     expect(() => resolveConfig({ food: { bogus: 1 } } as never)).toThrow(/unknown option/);
     expect(() => resolveConfig({ seed: 'x' } as never)).toThrow(/expected number/);
   });
+
+  it('validates the life-cycle options', () => {
+    expect(() => resolveConfig({ creatures: { birthCost: 0 } })).toThrow(/birthCost/);
+    expect(() => resolveConfig({ creatures: { birthEfficiency: 2 } })).toThrow(/birthEfficiency/);
+    expect(() => resolveConfig({ creatures: { maxAge: -1 } })).toThrow(/maxAge/);
+    expect(() => resolveConfig({ creatures: { maxPopulation: 1.5 } })).toThrow(/maxPopulation/);
+    expect(() => resolveConfig({ creatures: { basalCost: -1 } })).toThrow(/basalCost/);
+    expect(() => resolveConfig({ mutation: { rateMultiplier: -1 } })).toThrow(/rateMultiplier/);
+    expect(resolveConfig({ mutation: { rateMultiplier: 0 } }).mutation.rateMultiplier).toBe(0);
+  });
 });

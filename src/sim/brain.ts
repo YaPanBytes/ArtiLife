@@ -10,7 +10,9 @@ export const INPUT_COUNT = SENSE_INPUT_COUNT + MEMORY_SIZE;
 /** Output indices. The rest of the outputs are the new memory values. */
 export const OUT_TURN = 0;
 export const OUT_THRUST = 1;
-export const OUT_MEMORY = 2;
+/** The creature tries to reproduce while this is above 0. */
+export const OUT_REPRODUCE = 2;
+export const OUT_MEMORY = 3;
 export const OUTPUT_COUNT = OUT_MEMORY + MEMORY_SIZE;
 
 // Weight layout in the genome: W1 (hidden x inputs), b1, W2 (outputs x hidden), b2.
