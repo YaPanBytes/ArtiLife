@@ -27,3 +27,13 @@ describe('config paths', () => {
     expect(() => setPath(c, 'food', 3)).toThrow(/object/);
   });
 });
+
+describe('config paths and prototypes', () => {
+  it('only knows the config’s own settings, not what every object inherits', () => {
+    const config = resolveConfig();
+    expect(() => getPath(config, 'food.toString')).toThrow(/unknown config path/);
+    expect(() => getPath(config, '__proto__')).toThrow(/unknown config path/);
+    expect(() => setPath(config, 'food.constructor', 1)).toThrow(/unknown config path/);
+    expect(() => resolveConfig({ food: { hasOwnProperty: 1 } } as never)).toThrow(/unknown option/);
+  });
+});

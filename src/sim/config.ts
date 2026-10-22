@@ -211,7 +211,7 @@ function merge<T>(base: T, overrides: unknown, path: string): T {
   }
   const out = structuredClone(base) as Record<string, unknown>;
   for (const key of Object.keys(overrides)) {
-    if (!(key in base))
+    if (!Object.hasOwn(base, key))
       throw new RangeError(`config.${path ? path + '.' : ''}${key}: unknown option`);
     out[key] = merge(base[key], overrides[key], path ? `${path}.${key}` : key);
   }

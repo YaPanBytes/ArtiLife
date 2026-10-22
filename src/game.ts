@@ -144,7 +144,7 @@ export class Game {
   /** Point the camera and renderer at the backend's current world. */
   private resetView(): void {
     const { world } = this.backend;
-    this.renderer.setWorld(world);
+    this.renderer.setWorld(world, this.backend.analysis);
     const camera = new Camera(world.width, world.height);
     camera.centerOn((world.width * TILE) / 2, (world.height * TILE) / 2);
     this.view.camera = camera;

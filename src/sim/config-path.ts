@@ -2,7 +2,7 @@
 export function getPath(obj: object, path: string): unknown {
   let node: unknown = obj;
   for (const key of path.split('.')) {
-    if (typeof node !== 'object' || node === null || !(key in node)) {
+    if (typeof node !== 'object' || node === null || !Object.hasOwn(node, key)) {
       throw new RangeError(`unknown config path: ${path}`);
     }
     node = (node as Record<string, unknown>)[key];
@@ -15,7 +15,7 @@ export function setPath(obj: object, path: string, value: number | boolean | str
   const keys = path.split('.');
   const last = keys.pop()!;
   const parent = keys.length ? getPath(obj, keys.join('.')) : obj;
-  if (typeof parent !== 'object' || parent === null || !(last in parent)) {
+  if (typeof parent !== 'object' || parent === null || !Object.hasOwn(parent, last)) {
     throw new RangeError(`unknown config path: ${path}`);
   }
   const record = parent as Record<string, unknown>;

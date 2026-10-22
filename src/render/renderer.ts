@@ -88,7 +88,12 @@ export class Renderer {
   private readonly atlas = new Atlas();
   private readonly effects: Effect[] = [];
   private readonly headlines: Headline[] = [];
-  private lastEventKey = '';
+  /**
+   * The newest event already seen. `null` means a new world has just been set up: the next
+   * log to arrive that isn't `staleAnalysis` is taken as already seen, not as breaking news.
+   */
+  private lastEventKey: string | null = '';
+  private staleAnalysis: Analysis | null = null;
   private frame = 0;
   private minimap: Sprite | null = null;
   private readonly dotColors = Array.from({ length: HUE_COLUMN_COUNT }, (_, i) =>
@@ -102,12 +107,17 @@ export class Renderer {
     this.ctx.imageSmoothingEnabled = false;
   }
 
-  /** Call when a new world starts: rebuilds the minimap and clears effects. */
-  setWorld(world: WorldInfo): void {
+  /**
+   * Call when a new world starts: rebuilds the minimap and clears effects. `analysis` is the
+   * picture of the log held at that moment, which may still belong to the world just replaced.
+   */
+  setWorld(world: WorldInfo, analysis: Analysis | null = null): void {
     this.minimap = this.buildMinimap(world);
     this.effects.length = 0;
     this.headlines.length = 0;
-    this.lastEventKey = '';
+    // A world that has just been loaded already has a log; its old news is not breaking.
+    this.lastEventKey = null;
+    this.staleAnalysis = analysis;
   }
 
   render(
@@ -155,6 +165,15 @@ export class Renderer {
   private takeHeadlines(analysis: Analysis): void {
     const { events } = analysis;
     const fresh = [];
+    if (this.lastEventKey === null) {
+      if (analysis === this.staleAnalysis) return;
+      this.staleAnalysis = null;
+      this.lastEventKey = '';
+      // Take the log as it stands as already seen.
+      const last = events[events.length - 1];
+      if (last) this.lastEventKey = `${last.tick}:${last.text}`;
+      return;
+    }
     for (let i = events.length - 1; i >= 0; i--) {
       const key = `${events[i].tick}:${events[i].text}`;
       if (key === this.lastEventKey) break;

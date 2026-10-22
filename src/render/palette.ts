@@ -20,14 +20,26 @@ export type RGB = readonly [number, number, number];
 export function nes(index: number): RGB {
   const hex = NES_HEX[index];
   if (hex === undefined) throw new RangeError(`NES palette index out of range: ${index}`);
-  return [(hex >> 16) & 0xff, (hex >> 8) & 0xff, hex & 0xff];
+  // Colours are never changed, so every caller can share one array per entry.
+  return (NES_RGB[index] ??= [(hex >> 16) & 0xff, (hex >> 8) & 0xff, hex & 0xff]);
 }
+
+const NES_RGB: RGB[] = [];
 
 export const NES_COLOR_COUNT = NES_HEX.length;
 
+/** CSS text for a colour. Drawing asks for the same few dozen colours every frame, so they are remembered. */
 export function css([r, g, b]: RGB): string {
-  return `rgb(${r}, ${g}, ${b})`;
+  const key = (r << 16) | (g << 8) | b;
+  let text = CSS_TEXT.get(key);
+  if (text === undefined) {
+    text = `rgb(${r}, ${g}, ${b})`;
+    CSS_TEXT.set(key, text);
+  }
+  return text;
 }
+
+const CSS_TEXT = new Map<number, string>();
 
 /** Named colours used by the game, all taken from the NES palette. */
 export const COLORS = {

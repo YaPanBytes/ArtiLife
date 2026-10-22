@@ -365,7 +365,9 @@ export class Panel {
   }
 
   setSpeed(multiplier: number, tps?: number): void {
-    this.speedLabel.textContent = tps === undefined ? `X${multiplier}` : `X${multiplier} ${tps}/S`;
+    const text = tps === undefined ? `X${multiplier}` : `X${multiplier} ${tps}/S`;
+    // Called every frame; the page is only touched when the words change.
+    if (text !== this.speedLabel.textContent) this.speedLabel.textContent = text;
   }
 
   /**
