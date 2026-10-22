@@ -22,13 +22,15 @@ export function appetite(c: Creature, config: SimConfig): number {
 
 /**
  * Energy a creature burns this tick: staying alive (grows with size), moving
- * (grows with speed squared and size) and seeing (grows with vision range).
+ * (grows with speed squared and size), seeing (grows with vision range) and
+ * calling out (grows with how loud the call is).
  */
 export function upkeep(c: Creature, config: SimConfig): number {
-  const { basalCost, moveCost, senseCost } = config.creatures;
+  const { basalCost, moveCost, senseCost, signalCost } = config.creatures;
   return (
     basalCost * c.traits.size +
     moveCost * c.speed * c.speed * c.traits.size +
-    senseCost * c.traits.visionRange
+    senseCost * c.traits.visionRange +
+    signalCost * Math.abs(c.signal)
   );
 }

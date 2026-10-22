@@ -88,6 +88,36 @@ export class World {
           this.config.food.maxPerTile * this.config.food.initialFill * this.fertility[i];
       }
     }
+    this.buildBarriers(rng);
+  }
+
+  /**
+   * Walls of water or rock running top to bottom, evenly spaced, each two tiles
+   * wide and broken by a few gaps. Together with the map wrapping around, two
+   * barriers split the world into two regions joined only through the gaps.
+   */
+  private buildBarriers(rng: Rng): void {
+    const { barrier, barrierCount, barrierGaps } = this.config.terrain;
+    if (barrier === 'none') return;
+    const kind = barrier === 'river' ? Terrain.Water : Terrain.Rock;
+    const gapHeight = 3;
+    for (let b = 0; b < barrierCount; b++) {
+      const x0 = Math.floor(((b + 0.5) * this.width) / barrierCount);
+      const gapAt = new Set<number>();
+      for (let g = 0; g < barrierGaps; g++) {
+        const top = rng.int(this.height);
+        for (let k = 0; k < gapHeight; k++) gapAt.add((top + k) % this.height);
+      }
+      for (let y = 0; y < this.height; y++) {
+        if (gapAt.has(y)) continue;
+        for (let dx = 0; dx < 2; dx++) {
+          const i = y * this.width + ((x0 + dx) % this.width);
+          this.terrain[i] = kind;
+          this.fertility[i] = 0;
+          this.food[i] = 0;
+        }
+      }
+    }
   }
 
   /** Index of the tile containing (x, y), wrapping around the map edges. */
@@ -152,10 +182,10 @@ export class World {
     return 1 + amplitude * Math.sin((2 * Math.PI * tick) / lengthTicks);
   }
 
-  /** Regrow food on every tile for one tick. */
-  stepFood(tick: number): void {
+  /** Regrow food on every tile for one tick. `boost` scales regrowth, for droughts and the like. */
+  stepFood(tick: number, boost = 1): void {
     const { maxPerTile, regrowRate } = this.config.food;
-    const rate = regrowRate * this.seasonFactor(tick);
+    const rate = regrowRate * this.seasonFactor(tick) * boost;
     const { food, fertility } = this;
     for (let i = 0; i < food.length; i++) {
       const f = fertility[i];

@@ -1,4 +1,4 @@
-import type { SimConfig } from '../sim/config';
+import { BARRIERS, type SimConfig } from '../sim/config';
 import { getPath, setPath } from '../sim/config-path';
 
 /** A world rule the player can change from the panel. */
@@ -6,7 +6,9 @@ export interface Control {
   group: string;
   label: string;
   hint: string;
-  kind: 'number' | 'toggle';
+  kind: 'number' | 'toggle' | 'choice';
+  /** For 'choice' controls: the options. */
+  choices?: readonly string[];
   /** Where the rule lives in the config, e.g. 'food.regrowRate'. */
   path: string;
   min?: number;
@@ -14,14 +16,14 @@ export interface Control {
   step?: number;
   /** Takes effect only when a new world is made, because it shapes the map. */
   needsReset?: boolean;
-  get(c: SimConfig): number | boolean;
-  set(c: SimConfig, v: number | boolean): void;
+  get(c: SimConfig): number | boolean | string;
+  set(c: SimConfig, v: number | boolean | string): void;
 }
 
 const accessors = (path: string) => ({
   path,
-  get: (c: SimConfig) => getPath(c, path) as number | boolean,
-  set: (c: SimConfig, v: number | boolean) => setPath(c, path, v),
+  get: (c: SimConfig) => getPath(c, path) as number | boolean | string,
+  set: (c: SimConfig, v: number | boolean | string) => setPath(c, path, v),
 });
 
 const num = (
@@ -53,6 +55,15 @@ const toggle = (group: string, label: string, hint: string, path: string): Contr
   ...accessors(path),
 });
 
+const choice = (
+  group: string,
+  label: string,
+  hint: string,
+  choices: readonly string[],
+  path: string,
+  needsReset = false,
+): Control => ({ group, label, hint, kind: 'choice', choices, needsReset, ...accessors(path) });
+
 export const CONTROLS: readonly Control[] = [
   num(
     'FOOD',
@@ -80,6 +91,15 @@ export const CONTROLS: readonly Control[] = [
     'food.seasons.amplitude',
   ),
   num('FOOD', 'YEAR LEN', 'Ticks in one year.', 500, 20000, 500, 'food.seasons.lengthTicks'),
+  num(
+    'FOOD',
+    'COLD COST',
+    'Extra upkeep in the depth of winter, as a share of normal.',
+    0,
+    2,
+    0.05,
+    'food.seasons.coldCost',
+  ),
 
   num(
     'COSTS',
@@ -130,6 +150,30 @@ export const CONTROLS: readonly Control[] = [
   ),
   num('LIFE', 'MAX POP', 'No births at this population.', 0, 2000, 50, 'creatures.maxPopulation'),
 
+  toggle(
+    'LIFE',
+    'SEXUAL',
+    'Reproduction needs two willing, similar creatures close together; the child mixes both genomes.',
+    'creatures.sexual',
+  ),
+  num(
+    'LIFE',
+    'MATE RANGE',
+    'How close two creatures must be to mate, in tiles.',
+    0.5,
+    4,
+    0.1,
+    'creatures.mateRange',
+  ),
+  num(
+    'LIFE',
+    'CALL COST',
+    'Energy burned per tick by calling out, times how loud the call is.',
+    0,
+    0.05,
+    0.001,
+    'creatures.signalCost',
+  ),
   num(
     'PREDATION',
     'BITE POWER',
@@ -224,6 +268,34 @@ export const CONTROLS: readonly Control[] = [
     400,
     1,
     'creatures.initialCount',
+    true,
+  ),
+  choice(
+    'NEW WORLD',
+    'BARRIER',
+    'A wall of water or rock splitting the world into regions.',
+    BARRIERS,
+    'terrain.barrier',
+    true,
+  ),
+  num(
+    'NEW WORLD',
+    'BARRIERS',
+    'How many barriers. It takes two to split the wrapped-around map in two.',
+    1,
+    6,
+    1,
+    'terrain.barrierCount',
+    true,
+  ),
+  num(
+    'NEW WORLD',
+    'GAPS',
+    'Crossing points in each barrier. 0 seals the regions off completely.',
+    0,
+    8,
+    1,
+    'terrain.barrierGaps',
     true,
   ),
 ];

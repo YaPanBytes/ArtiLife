@@ -4,7 +4,7 @@ An artificial-life ecosystem. Creatures with small neural-net brains and heritab
 
 You change the rules of the world (food supply, metabolic cost, mutation rate, terrain, disasters) and watch what evolves: grazing herds, ambush predators, scavengers, parasites, boom-and-bust cycles, and strategies nobody designed.
 
-> **Status: early development.** Steps 1 to 6 of the [implementation plan](#implementation-plan) are done: the world and food field, creatures with genomes, neural-net brains, vision and movement, a full life cycle (eating, energy costs, death, reproduction, mutation), the NES-style pixel renderer with live controls, predation with a diet gene, and analysis tools (inspector with a live brain graph, charts, a species tree, an event log, a glyph view and colour overlays). Populations sustain themselves, evolve, and (with the default rules) split into plant eaters and hunters. Sections marked _(planned)_ are targets, not features.
+> **Status: early development.** Steps 1 to 7 of the [implementation plan](#implementation-plan) are done: the world and food field, creatures with genomes, neural-net brains, vision and movement, a full life cycle (eating, energy costs, death, reproduction, mutation), the NES-style pixel renderer with live controls, predation with a diet gene, and analysis tools (inspector with a live brain graph, charts, a species tree, an event log, a glyph view and colour overlays). Populations sustain themselves, evolve, and (with the default rules) split into plant eaters and hunters. Sections marked _(planned)_ are targets, not features.
 
 ## Core idea
 
@@ -20,8 +20,8 @@ Anything that reproduces more than it dies spreads. Roles like "predator" or "he
 
 ### World
 
-- A 2D toroidal (wrap-around) map, with an optional terrain layer: open ground, walls, water, fertile and barren zones.
-- A **food field** (a grid of plant energy) that regrows at a configurable rate, optionally varying with seasons.
+- A 2D toroidal (wrap-around) map with open ground, water, rock, and fertile and barren soil. An optional **barrier** (a river or a wall running top to bottom, with a chosen number of gaps) splits the world into regions, so populations can be separated and evolve apart.
+- A **food field** (a grid of plant energy) that regrows at a configurable rate. **Seasons** are optional: regrowth swings up and down over a yearly cycle, and winter can also make living costlier (`COLD COST`).
 - A spatial hash for fast neighbour queries, so thousands of creatures run in real time.
 
 ### Creatures
@@ -35,9 +35,9 @@ Each creature has:
 | **State**       | Position, heading, energy, age, generation, lineage ID.                                                                                       |
 | **Brain**       | A small feed-forward neural net with a few memory neurons that carry state between ticks.                                                     |
 
-**Brain inputs:** 5 vision rays across the field of view, each reporting nearby food, nearby obstacles (water and rock), the nearest creature, its size relative to the viewer, and its diet (carnivores look toothy). Then own energy, own speed, food on the current tile, whether it was just bitten, and 2 memory neurons.
+**Brain inputs:** 5 vision rays across the field of view, each reporting nearby food, nearby obstacles (water and rock), the nearest creature, its size relative to the viewer, its diet (carnivores look toothy) and its call. Then own energy, own speed, food on the current tile, whether it was just bitten, and 2 memory neurons.
 
-**Brain outputs:** turn, thrust, reproduce and bite, plus the 2 memory values for the next tick. An optional signal (a colour or sound others can perceive) is added in a later step.
+**Brain outputs:** turn, thrust, reproduce, bite and call, plus the 2 memory values for the next tick.
 
 ### Energy economy
 
@@ -52,13 +52,15 @@ Each creature has:
 - **Bite:** the brain has a bite output. A bite hits the nearest creature in a cone in front (reach and angle are rules). It takes energy from the victim, scaled by the biter's size and diet, so plant eaters bite weakly and only carnivores hit hard. The biter keeps part of what it took (`MEAT YIELD`) according to its diet. Every bite attempt costs energy, even a miss.
 - All bites in a tick are settled together, so the result doesn't depend on the order creatures happen to be stored in. When several bites would take more than a victim has, they share what is left.
 - Creatures can see how toothy others are, and feel being bitten, so both chasing and fleeing can evolve.
+
 - In the pixel view carnivores (diet above 0.5) are drawn with horns and a red pupil, and a bite flashes at the victim.
 - **How it plays out:** in my runs with the default rules, carnivores appear within the first few thousand ticks and settle at about a third to a half of the population, living off the plant eaters, and populations of 100 to 200 survived 50,000 ticks on four different seeds. Predation becomes the main cause of death. Make bites free, or meat yield high, and hunters can wipe out their prey and crash the world. Make them costly and hunters never appear. The sliders let you explore this.
 
 ### Evolution
 
 - Mutation: Gaussian noise on brain weights and traits. The mutation rate is itself a gene, so it can evolve.
-- Sexual reproduction (crossover between nearby mates) as an optional rule.
+- **Sexual reproduction** is an optional rule. Two willing creatures (both ready to reproduce, close together, and with genomes similar enough) make one child between them: each gene comes from one parent or the other, then mutates. Each parent pays half the birth cost, so a child costs the same as in the asexual case. Each creature mates at most once a tick. Because mates must be similar, species can become reproductively separate.
+- **Signals:** the brain has a "call" output between -1 and 1 that nearby creatures can see (one more sensor on each vision ray). Calling costs energy in proportion to its loudness, so it has to earn its keep. What, if anything, calls come to mean is left to evolution. In the pixel view a loud call shows as dots above the creature.
 - **Species** are _tracked_ by genome distance for analysis and display; they never influence the simulation. All the first creatures share one species. A child stays in its parent's species until it has drifted further than a threshold from that species' founding genome; then it founds a new species, recorded as a branch of its parent's. Species counts depend a lot on the run (a handful to a couple of hundred in 20,000 ticks), and the threshold is a rule (`species.threshold`).
 - **History** of the population and trait averages is sampled as it runs. When the record fills it keeps every other sample and samples half as often, so a long run still fits.
 - **Events** are written to a log as they happen: population milestones and crashes, the first hunters, hunters dying out, generation milestones, season changes, a new species with a different diet, and notable extinctions.
@@ -67,17 +69,24 @@ Each creature has:
 
 The sim core takes a seed and a config. The same seed with the same config gives the same world, so interesting runs can be replayed, shared and saved.
 
-## World knobs _(planned)_
+## World knobs
 
-All of these are editable while the sim runs:
+All of these are editable in the side panel while the sim runs, except the "new world" group, which applies when you start a new world:
 
-- Plant regrowth rate, seasons, fertile and barren zones
-- Metabolic cost, movement cost, brain cost
-- Bite damage and meat energy yield (controls whether predation pays)
-- Mutation rate and magnitude, sexual vs. asexual reproduction
-- Maximum population and carrying capacity
-- Terrain: walls, water, barriers that split populations
-- Events: drought, plague, meteor, introduce a new creature type
+- **Food:** plant regrowth and cap, seasons (on/off, swing, year length, winter cold cost).
+- **Costs:** living, moving, seeing, eating.
+- **Predation:** bite power, bite cost, meat yield, diet trade-off, how weak a plant eater's bite is.
+- **Life:** birth cost, maximum age, population cap, sexual reproduction (and mating range), the cost of calling.
+- **Evolution:** mutation rate and size.
+- **Disasters** (buttons, they happen immediately):
+  - **Drought:** plants nearly stop regrowing for 1,500 ticks.
+  - **Ice age:** regrowth at 40% and upkeep 40% higher, for 3,000 ticks.
+  - **Bloom:** every plant instantly grows to full size.
+  - **Plague:** kills two in five creatures at random.
+  - **Meteor:** kills everything near a random spot and scorches the plants there.
+  - **+Hunters / +Grazers:** introduce 15 hunters or 30 plant eaters with fresh random brains, as a new species.
+  - Active droughts and ice ages are shown on the playfield, and each disaster is announced in the event log.
+- **New world:** water, rock, soil unevenness, starting population, barrier type (none, river, wall), number of barriers and gaps in them, and the seed.
 
 ## Visual style
 
@@ -129,7 +138,6 @@ ArtiLife looks like an 8-bit NES game, with the information density of Dwarf For
 **Planned**
 
 - Save/load of runs, screenshots, and optional chiptune sound.
-- Sexual reproduction, terrain barriers, seasons' effects, disasters and creature signals (step 7).
 
 ## Tech
 
@@ -161,7 +169,7 @@ tests/
 4. **Renderer and controls** _(done)_: pixel renderer (NES palette, tile map, creature sprites with walk frames), Zelda-style HUD with minimap, pause/speed, live parameter sliders.
 5. **Predation and diet** _(done)_: bite mechanic, diet gene, meat vs. plant efficiency. This is where predators can first appear.
 6. **Analysis tools** _(done)_: inspector, brain viewer, charts, lineage tracking, event log, glyph (ASCII) mode, colour overlays.
-7. **Richer worlds**: terrain, seasons, events, sexual reproduction, creature signals.
+7. **Richer worlds** _(done)_: terrain barriers, seasonal cold, disasters, sexual reproduction, creature signals.
 8. **Polish**: save/load, shareable seeds, performance pass (worker, WebGL), presets such as "Lush Eden", "Dust Bowl" and "Ice Age".
 9. **Stretch**: NEAT-style brain topology evolution, recurrent brains, learning within a lifetime, multi-world islands with migration.
 

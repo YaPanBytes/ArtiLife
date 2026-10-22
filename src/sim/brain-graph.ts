@@ -18,7 +18,7 @@ export interface BrainGraph {
   edgeWeight: Float32Array;
 }
 
-const RAY_LABELS = ['FOOD', 'WALL', 'CRTR', 'SIZE', 'DIET'];
+const RAY_LABELS = ['FOOD', 'WALL', 'CRTR', 'SIZE', 'DIET', 'CALL'];
 const SELF_LABELS = ['NRG', 'SPD', 'FOOD', 'HURT'];
 
 /** Short names for the brain's inputs, in order. */
@@ -34,7 +34,7 @@ export function inputLabels(): string[] {
 
 /** Short names for the brain's outputs, in order. */
 export function outputLabels(): string[] {
-  const labels = ['TURN', 'GO', 'MATE', 'BITE'];
+  const labels = ['TURN', 'GO', 'MATE', 'BITE', 'CALL'];
   for (let m = 1; m <= MEMORY_SIZE; m++) labels.push(`MEM ${m}`);
   return labels;
 }

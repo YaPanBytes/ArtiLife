@@ -8,9 +8,10 @@ import { Terrain, type World } from './world';
 export const RAY_COUNT = 5;
 /**
  * Per ray: nearest-weighted food, obstacle proximity, creature proximity, the
- * creature's size relative to the viewer, and its diet (carnivores look toothy).
+ * creature's size relative to the viewer, its diet (carnivores look toothy), and
+ * the call it is making.
  */
-export const RAY_CHANNELS = 5;
+export const RAY_CHANNELS = 6;
 /** Own energy, own speed, food on the current tile, and whether it was just bitten. */
 export const SELF_INPUTS = 4;
 export const SENSE_INPUT_COUNT = RAY_COUNT * RAY_CHANNELS + SELF_INPUTS;
@@ -20,6 +21,7 @@ const OBSTACLE = 1;
 const CREATURE = 2;
 const CREATURE_SIZE = 3;
 const CREATURE_DIET = 4;
+const CREATURE_SIGNAL = 5;
 
 /**
  * Fill the first SENSE_INPUT_COUNT entries of `c.inputs` from the world.
@@ -75,6 +77,7 @@ export function sense(
       inputs[slot + CREATURE_SIZE] =
         (other.traits.size - c.traits.size) / (other.traits.size + c.traits.size);
       inputs[slot + CREATURE_DIET] = other.traits.diet * 2 - 1;
+      inputs[slot + CREATURE_SIGNAL] = other.signal;
     }
   }
 

@@ -2,6 +2,7 @@ import { setPath } from '../sim/config-path';
 import { resolveConfig, type SimConfig } from '../sim/config';
 import { describeBrain } from '../sim/brain-graph';
 import { TRAIT_COUNT } from '../sim/genome';
+import { MODIFIER_NAMES, type DisasterKind } from '../sim/disasters';
 import { seasonInfo } from '../sim/season';
 import { Simulation } from '../sim/simulation';
 import {
@@ -81,6 +82,10 @@ export class SimHost implements Backend {
     this.speed = multiplier;
   }
 
+  trigger(kind: DisasterKind): void {
+    this.sim.trigger(kind);
+  }
+
   stepOnce(): void {
     this.paused = true;
     this.sim.step();
@@ -139,6 +144,7 @@ export class SimHost implements Backend {
     scene.maxAge = config.creatures.maxAge;
     scene.season = seasonInfo(sim.tick, config);
     scene.stats = { ...sim.stats };
+    scene.hazards = sim.modifiers.map((m) => MODIFIER_NAMES[m.kind]);
     if (scene.food.length !== sim.world.food.length)
       scene.food = new Float32Array(sim.world.food.length);
     scene.food.set(sim.world.food);
@@ -156,6 +162,7 @@ export class SimHost implements Backend {
       scene.hue[i] = c.traits.hue;
       scene.size[i] = c.traits.size;
       scene.diet[i] = c.traits.diet;
+      scene.signal[i] = c.signal;
     }
     scene.effects = this.pendingEffects;
     this.pendingEffects = [];

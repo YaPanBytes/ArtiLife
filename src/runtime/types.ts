@@ -1,4 +1,5 @@
 import type { SimConfig } from '../sim/config';
+import type { DisasterKind } from '../sim/disasters';
 import type { BrainGraph } from '../sim/brain-graph';
 import type { Traits } from '../sim/genome';
 import type { HistoryData } from '../sim/history';
@@ -30,9 +31,11 @@ export class Scene {
   /** Age at which creatures die of old age, or 0 for never. */
   maxAge = 0;
   season: SeasonInfo | null = null;
+  /** Names of the temporary rule changes in force, such as a drought. */
+  hazards: string[] = [];
   /** Measured simulation speed, in ticks per second. */
   tps = 0;
-  stats: SimStats = { births: 0, starved: 0, eaten: 0, bites: 0, diedOfAge: 0 };
+  stats: SimStats = { births: 0, starved: 0, eaten: 0, disaster: 0, bites: 0, diedOfAge: 0 };
   food = new Float32Array(0);
   /** Births, deaths and bites since the last frame, as flat [kind, x, y] triples. */
   effects: number[] = [];
@@ -49,6 +52,8 @@ export class Scene {
   hue = new Float32Array(0);
   size = new Float32Array(0);
   diet = new Float32Array(0);
+  /** The call each creature is making, from -1 to 1. */
+  signal = new Float32Array(0);
 
   /** Make room for at least `n` creatures. */
   ensureCapacity(n: number): void {
@@ -66,6 +71,7 @@ export class Scene {
     this.hue = new Float32Array(capacity);
     this.size = new Float32Array(capacity);
     this.diet = new Float32Array(capacity);
+    this.signal = new Float32Array(capacity);
   }
 
   /** Position in the arrays of the creature with this id, or -1. */
@@ -111,6 +117,8 @@ export interface Backend {
   readonly settings: SimConfig;
 
   newWorld(settings: SimConfig, warmup?: number): void;
+  /** Make something happen: a drought, a plague, newcomers. */
+  trigger(kind: DisasterKind): void;
   setPaused(paused: boolean): void;
   setSpeed(multiplier: number): void;
   stepOnce(): void;

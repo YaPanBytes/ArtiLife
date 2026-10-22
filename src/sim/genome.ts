@@ -97,3 +97,15 @@ export function mutate(
   }
   return child;
 }
+
+/** A child genome that takes each gene from one parent or the other, at random. */
+export function crossover(a: Float32Array, b: Float32Array, rng: Rng): Float32Array {
+  const child = new Float32Array(a.length);
+  for (let i = 0; i < child.length; i++) child[i] = rng.next() < 0.5 ? a[i] : b[i];
+  return child;
+}
+
+/** Set the diet gene of a genome to a real diet value between 0 and 1. */
+export function setDiet(genome: Float32Array, diet: number): void {
+  genome[TRAIT_ORDER.indexOf('diet')] = clamp(diet, 0, 1);
+}

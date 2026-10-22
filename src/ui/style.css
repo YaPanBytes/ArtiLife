@@ -242,3 +242,33 @@ canvas#screen {
   min-width: 56px;
   text-align: center;
 }
+
+#panel .wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+#panel select {
+  font: inherit;
+  color: var(--white);
+  background: var(--black);
+  border: 2px solid var(--blue);
+  padding: 3px;
+  grid-column: 1 / -1;
+}
+
+#panel .wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+#panel select {
+  font: inherit;
+  color: var(--white);
+  background: var(--black);
+  border: 2px solid var(--blue);
+  padding: 3px;
+  grid-column: 1 / -1;
+}

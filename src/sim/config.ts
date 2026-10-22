@@ -37,6 +37,14 @@ export interface SimConfig {
     birthEfficiency: number;
     /** No births while the population is at this size. */
     maxPopulation: number;
+    /** Reproduction needs two willing, compatible creatures close together. */
+    sexual: boolean;
+    /** How close two creatures must be to mate, in tiles. */
+    mateRange: number;
+    /** Most different two genomes can be and still mate (same scale as the species threshold). */
+    mateCompatibility: number;
+    /** Energy burned per tick by signalling, times how strongly it signals. */
+    signalCost: number;
   };
   predation: {
     /** How far a creature can reach with a bite, in tiles. */
@@ -76,6 +84,15 @@ export interface SimConfig {
     rockFraction: number;
     /** 0 = every ground tile is equally fertile, 1 = barren to lush. */
     fertilityContrast: number;
+    /**
+     * A wall of water or rock running top to bottom, to split the world into
+     * regions: 'none', 'river' (water) or 'wall' (rock).
+     */
+    barrier: string;
+    /** How many barriers. The map wraps, so it takes two to split it in two. */
+    barrierCount: number;
+    /** Gaps in each barrier where creatures can cross. 0 seals it. */
+    barrierGaps: number;
   };
   food: {
     /** Plant energy a tile holds when full. */
@@ -90,6 +107,8 @@ export interface SimConfig {
       lengthTicks: number;
       /** Strength of the swing (0-1): regrowth varies by +/- this fraction. */
       amplitude: number;
+      /** Extra upkeep in the depth of winter, as a fraction of normal (0 = none). */
+      coldCost: number;
     };
   };
 }
@@ -113,6 +132,10 @@ export const DEFAULT_CONFIG: SimConfig = {
     birthCost: 40,
     birthEfficiency: 0.5,
     maxPopulation: 800,
+    sexual: false,
+    mateRange: 1.5,
+    mateCompatibility: 0.35,
+    signalCost: 0.005,
   },
   predation: {
     biteRange: 1.2,
@@ -125,12 +148,20 @@ export const DEFAULT_CONFIG: SimConfig = {
   },
   species: { threshold: 0.15 },
   mutation: { magnitude: 0.1, rateMultiplier: 1 },
-  terrain: { scale: 16, waterFraction: 0.1, rockFraction: 0.05, fertilityContrast: 0.6 },
+  terrain: {
+    scale: 16,
+    waterFraction: 0.1,
+    rockFraction: 0.05,
+    fertilityContrast: 0.6,
+    barrier: 'none',
+    barrierCount: 2,
+    barrierGaps: 3,
+  },
   food: {
     maxPerTile: 10,
     regrowRate: 0.02,
     initialFill: 0.5,
-    seasons: { enabled: false, lengthTicks: 4000, amplitude: 0.5 },
+    seasons: { enabled: false, lengthTicks: 4000, amplitude: 0.5, coldCost: 0 },
   },
 };
 
@@ -159,6 +190,8 @@ function merge<T>(base: T, overrides: unknown, path: string): T {
 function check(ok: boolean, message: string): void {
   if (!ok) throw new RangeError(`config.${message}`);
 }
+
+export const BARRIERS: readonly string[] = ['none', 'river', 'wall'];
 
 const isFraction = (n: number) => Number.isFinite(n) && n >= 0 && n <= 1;
 const isPositiveInt = (n: number) => Number.isInteger(n) && n > 0;
@@ -213,6 +246,26 @@ export function resolveConfig(overrides: DeepPartial<SimConfig> = {}): SimConfig
   check(c.species.threshold > 0, 'species.threshold: must be positive');
   check(c.mutation.magnitude >= 0, 'mutation.magnitude: must not be negative');
   check(c.mutation.rateMultiplier >= 0, 'mutation.rateMultiplier: must not be negative');
+  check(
+    c.creatures.mateRange > 0 && c.creatures.mateCompatibility > 0,
+    'creatures: mateRange and mateCompatibility must be positive',
+  );
+  check(c.creatures.signalCost >= 0, 'creatures.signalCost: must not be negative');
+  check(
+    BARRIERS.includes(c.terrain.barrier),
+    `terrain.barrier: must be one of ${BARRIERS.join(', ')}`,
+  );
+  check(
+    Number.isInteger(c.terrain.barrierCount) &&
+      c.terrain.barrierCount >= 1 &&
+      c.terrain.barrierCount <= 8,
+    'terrain.barrierCount: must be a whole number from 1 to 8',
+  );
+  check(
+    Number.isInteger(c.terrain.barrierGaps) && c.terrain.barrierGaps >= 0,
+    'terrain.barrierGaps: must be a non-negative whole number',
+  );
+  check(c.food.seasons.coldCost >= 0, 'food.seasons.coldCost: must not be negative');
   check(c.terrain.scale >= 1, 'terrain.scale: must be at least 1');
   check(isFraction(c.terrain.waterFraction), 'terrain.waterFraction: must be between 0 and 1');
   check(isFraction(c.terrain.rockFraction), 'terrain.rockFraction: must be between 0 and 1');

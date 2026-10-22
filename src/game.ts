@@ -60,6 +60,7 @@ export class Game {
       changeSpeed: (d) => this.changeSpeed(d),
       newWorld: (seed) => this.newWorld(seed),
       applyLive: (control, value) => this.applyLive(control, value),
+      trigger: (kind) => this.backend.trigger(kind),
       toggleGlyph: () => this.toggleGlyph(),
       cycleOverlay: (d) => this.cycleOverlay(d),
     });
@@ -126,7 +127,7 @@ export class Game {
   }
 
   /** A slider moved: change the rule in the running simulation too. */
-  private applyLive(control: Control, value: number | boolean): void {
+  private applyLive(control: Control, value: number | boolean | string): void {
     this.backend.setConfig(control.path, value);
   }
 

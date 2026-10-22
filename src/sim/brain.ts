@@ -14,7 +14,9 @@ export const OUT_THRUST = 1;
 export const OUT_REPRODUCE = 2;
 /** The creature tries to bite whatever is in front of it while this is above 0. */
 export const OUT_BITE = 3;
-export const OUT_MEMORY = 4;
+/** How loudly the creature calls, from -1 to 1. Other creatures can see it. */
+export const OUT_SIGNAL = 4;
+export const OUT_MEMORY = 5;
 export const OUTPUT_COUNT = OUT_MEMORY + MEMORY_SIZE;
 
 // Weight layout in the genome: W1 (hidden x inputs), b1, W2 (outputs x hidden), b2.

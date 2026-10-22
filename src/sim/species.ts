@@ -107,6 +107,20 @@ export class SpeciesTracker {
     this.version++;
   }
 
+  /**
+   * Register creatures brought in from outside as a new species of their own, with
+   * no parent species. They all compare against the first one's genome.
+   */
+  addImmigrants(group: Classifiable[], tick: number): void {
+    if (group.length === 0) return;
+    const species = this.create(null, group[0].genome, tick);
+    for (const c of group) {
+      this.join(c, species);
+      c.speciesRef = species.ref;
+    }
+    this.version++;
+  }
+
   /** Place a newborn, starting a new species if it has drifted too far from its parent's. */
   addChild(child: Classifiable, parent: Classifiable, tick: number): void {
     const parentSpecies = this.species.get(parent.speciesId);

@@ -13,6 +13,7 @@ import type { Overlay, RenderMode, ViewState } from '../render/view';
 import type { Analysis, CreatureDetail, Scene } from '../runtime/types';
 import type { SimConfig } from '../sim/config';
 import { dietClass } from '../sim/species';
+import { DISASTER_INFO, DISASTER_KINDS, type DisasterKind } from '../sim/disasters';
 import { CONTROLS, decimalsFor, type Control } from './controls';
 
 export interface PanelActions {
@@ -22,7 +23,9 @@ export interface PanelActions {
   /** Start a new world with the pending settings and this seed. */
   newWorld(seed: number): void;
   /** A live control changed this value: apply it to the running simulation. */
-  applyLive(control: Control, value: number | boolean): void;
+  applyLive(control: Control, value: number | boolean | string): void;
+  /** Make a disaster or introduction happen now. */
+  trigger(kind: DisasterKind): void;
   toggleGlyph(): void;
   cycleOverlay(direction: 1 | -1): void;
 }
@@ -127,6 +130,17 @@ export class Panel {
       section.append(this.buildControl(control));
     }
 
+    const disasters = el('section');
+    disasters.append(el('h2', 'DISASTERS'));
+    const disasterRow = el('div', '', 'wrap');
+    for (const kind of DISASTER_KINDS) {
+      const b = button(DISASTER_INFO[kind].label, () => actions.trigger(kind));
+      b.title = DISASTER_INFO[kind].hint;
+      disasterRow.append(b);
+    }
+    disasters.append(disasterRow);
+    groups.get('EVOLUTION')!.after(disasters);
+
     const world = groups.get('NEW WORLD')!;
     const seedRow = el('div', '', 'row');
     this.seedInput = document.createElement('input');
@@ -221,6 +235,20 @@ export class Panel {
     this.inputs.set(control, input);
     this.values.set(control, value);
 
+    if (control.kind === 'choice') {
+      const select = document.createElement('select');
+      for (const option of control.choices ?? []) {
+        const o = document.createElement('option');
+        o.value = option;
+        o.textContent = option.toUpperCase();
+        select.append(o);
+      }
+      select.value = String(control.get(this.settings));
+      select.addEventListener('change', () => this.change(control, select.value));
+      row.append(name, value, select);
+      this.showValue(control);
+      return row;
+    }
     if (control.kind === 'toggle') {
       input.type = 'checkbox';
       input.checked = control.get(this.settings) as boolean;
@@ -238,7 +266,7 @@ export class Panel {
     return row;
   }
 
-  private change(control: Control, v: number | boolean): void {
+  private change(control: Control, v: number | boolean | string): void {
     control.set(this.settings, v);
     if (!control.needsReset) this.actions.applyLive(control, v);
     this.showValue(control);
@@ -247,7 +275,13 @@ export class Panel {
   private showValue(control: Control): void {
     const v = control.get(this.settings);
     this.values.get(control)!.textContent =
-      typeof v === 'boolean' ? (v ? 'ON' : 'OFF') : v.toFixed(decimalsFor(control.step ?? 1));
+      typeof v === 'boolean'
+        ? v
+          ? 'ON'
+          : 'OFF'
+        : typeof v === 'string'
+          ? ''
+          : v.toFixed(decimalsFor(control.step ?? 1));
   }
 
   setPaused(paused: boolean): void {

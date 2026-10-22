@@ -34,6 +34,8 @@ const EFFECT_FRAMES = 24;
 /** Bite flashes are quick. */
 const HIT_FRAMES = 8;
 const MAX_EFFECTS = 200;
+/** Calls quieter than this aren't drawn. */
+const CALL_VISIBLE = 0.3;
 /** Creatures with at least this diet are drawn as predators. */
 const PREDATOR_DIET = 0.5;
 /** How long a headline stays on screen, in frames. */
@@ -127,7 +129,11 @@ export class Renderer {
       this.drawEffects(view);
     }
     this.drawTicker();
-    if (view.overlay !== 'none') this.drawLabel(`SHOWING ${OVERLAY_NAMES[view.overlay]}`);
+    let labelRow = 0;
+    if (view.overlay !== 'none') {
+      this.drawLabel(`SHOWING ${OVERLAY_NAMES[view.overlay]}`, labelRow++, COLORS.white);
+    }
+    for (const hazard of scene.hazards) this.drawLabel(hazard, labelRow++, COLORS.red);
     if (view.paused && (this.frame >> 5) % 2 === 0) this.drawPaused();
     this.drawHud(scene, world, detail, view, selected);
   }
@@ -247,8 +253,18 @@ export class Renderer {
       const x = Math.round(sx - size / 2);
       const y = HUD_H + Math.round(sy - size / 2);
       ctx.drawImage(sprite, x, y);
+      this.drawCall(scene.signal[i], x, y, size);
       if (i === selected && (this.frame >> 3) % 2 === 0) this.drawBrackets(x - 2, y - 2, size + 4);
     }
+  }
+
+  /** A loud call shows as a pair of dots above the creature: white for positive, blue for negative. */
+  private drawCall(signal: number, x: number, y: number, size: number): void {
+    if (Math.abs(signal) < CALL_VISIBLE) return;
+    const color = signal > 0 ? COLORS.white : nes(0x21);
+    this.fillRect(color, x + (size >> 1) - 1, y - 3, 1, 1);
+    this.fillRect(color, x + (size >> 1) + 1, y - 3, 1, 1);
+    if (Math.abs(signal) > 0.7) this.fillRect(color, x + (size >> 1), y - 5, 1, 1);
   }
 
   private drawBrackets(x: number, y: number, size: number): void {
@@ -372,9 +388,10 @@ export class Renderer {
     });
   }
 
-  private drawLabel(label: string): void {
-    this.fillRect(COLORS.black, 0, HUD_H, label.length * 8 + 4, 10);
-    this.text(label, 2, HUD_H + 1, COLORS.white);
+  private drawLabel(label: string, row: number, color: RGB): void {
+    const y = HUD_H + row * 10;
+    this.fillRect(COLORS.black, 0, y, label.length * 8 + 4, 10);
+    this.text(label, 2, y + 1, color);
   }
 
   private drawPaused(): void {
@@ -412,7 +429,7 @@ export class Renderer {
     const rows = [
       `POP  ${formatCount(scene.count, 4)}`,
       `BORN ${formatCount(stats.births, 4)}`,
-      `DEAD ${formatCount(stats.starved + stats.diedOfAge + stats.eaten, 4)}`,
+      `DEAD ${formatCount(stats.starved + stats.diedOfAge + stats.eaten + stats.disaster, 4)}`,
       `GEN  ${formatCount(generation, 4)}`,
       season ? `Y${formatCount(season.year, 2)} ${season.name}` : `T${scene.tick}`,
     ];
