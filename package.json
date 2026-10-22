@@ -1,0 +1,21 @@
+{
+  "name": "artilife",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Artificial life ecosystem: evolving neural-net creatures on a 2D map.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "prettier": "^3.9.10",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}
