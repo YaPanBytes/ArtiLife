@@ -90,7 +90,7 @@ Set `ISLANDS` above 1 (when making a world) and you get that many separate world
 
 ### Determinism
 
-The sim core takes a seed and a config. The same seed with the same config gives the same world, so interesting runs can be replayed, shared and saved.
+The sim core takes a seed and a config. The same seed with the same config gives the same world, so interesting runs can be replayed, shared and saved. This holds on one JavaScript engine and version: `Math.sin`, `Math.cos` and `Math.atan2` are not required to round the same way everywhere, so the same seed can drift apart in another browser. A saved run (SAVE) carries the exact state, which is the dependable way to hand a run to someone else.
 
 ## World knobs
 
@@ -175,14 +175,23 @@ ArtiLife looks like an 8-bit NES game, with the information density of Dwarf For
 - **TypeScript**, built with **Vite**.
 - **Simulation core** (`src/sim/`) has no DOM dependencies, so it also runs headless in Node for batch experiments and tests.
 - **Web Worker:** in the browser the simulation runs in a worker (`src/runtime/worker*.ts`), so the page stays smooth however hard the simulation is working. The worker sends a frame at most every 1/60 s and waits until the page has drawn the ones it already sent, so it never races ahead of a page that isn't drawing (a background tab, say). Add `?worker=0` to the address to run everything on the page instead.
-- **Renderer** draws to a 256×224 Canvas 2D buffer and scales it up by integer factors (pixelated). Sprites and tiles are pixel patterns written as text in `src/render/art.ts`, coloured from the NES palette at start-up. I measured the page holding 60 frames per second with the simulation running flat out, so drawing is not the bottleneck and WebGL isn't needed.
+- **Renderer** draws to a 256×224 Canvas 2D buffer and scales it up by integer factors (pixelated). Sprites and tiles are pixel patterns written as text in `src/render/art.ts`, coloured from the NES palette at start-up. I measured the page holding 60 frames per second with the simulation running flat out, so drawing is not the bottleneck and WebGL isn't needed. The map is painted once and only changed tiles are repainted (see Speed).
 - **Tests** with Vitest, including determinism and energy-conservation checks. The pure rendering and UI logic (palette, sprite art, camera, HUD helpers, controls, charts, species tree, brain graph) is unit-tested, with charts drawn onto an in-memory pixel buffer so the output can be asserted. The worker is tested by joining the real worker code to the real proxy through a fake worker that structured-clones every message.
 - **End-to-end tests** (`npm run e2e`) drive the built page in Chromium with Playwright, in both worker and page modes: running, pausing, clicking, dragging, every panel tab, live rules, presets, share links, save and load, screenshots, sound, and that the console stays free of errors.
 - **Runtime layer:** the renderer and panel never touch the simulation directly. They read a `Scene` (flat arrays of creature data), a `CreatureDetail` for the followed creature and an `Analysis` (history, species, events), produced by `SimHost` (on the page or in the worker). That keeps drawing independent of how the simulation is run.
 
 ### Speed
 
-At about 200 creatures the simulation costs roughly 5 microseconds per creature per tick (`npm run bench`), after an optimisation pass on the vision code and the spatial hash that cut it by about a third (from 7.5). In the browser that is about 690 ticks per second flat out, about x11 the normal rate, so x16 and x32 can't be reached with a big population. The panel shows the speed actually achieved next to the multiplier. A worker doesn't make one simulation faster; it keeps the page responsive. The remaining time is spread fairly evenly over vision, the spatial hash, the brain and bookkeeping, so much more would need a deeper restructuring of the data layout.
+At about 200 creatures the simulation costs roughly 3.5 microseconds per creature per tick (`npm run bench`), about 0.65 ms per tick, or about 1,500 ticks per second flat out in Node. A review pass on the whole codebase brought that down from 5 microseconds (after an earlier pass had cut it from 7.5). What mattered, in order of gain:
+
+- **tanh.** Every neuron of every creature calls it every tick, and `Math.tanh` was a fifth of the whole tick. A rational approximation good to 2e-7 is about four times faster. Over ten seeds and 5,000 ticks the long-run behaviour is unchanged (mean population 177 against 178, hunters 36% against 35%), though any single run differs from before, as any tiny change makes them.
+- **Seeing creatures.** A creature outside the widest ray's reach is rejected with a dot product before any angle is worked out; most of those that were found by the spatial hash are behind or beside the viewer.
+- **Brains skip zero inputs** (nearly half the senses read zero at any moment, and a zero adds nothing to a sum), and small things such as no allocation per think, one tile lookup per creature in the eat phase, the dead removed in place, and a spatial hash whose arrays stay one type so the engine can optimise its loops.
+- **Mate search** uses a grid of the willing instead of comparing every pair.
+
+In the browser the simulation reaches about 1,100 ticks per second flat out with 200 creatures (about x18 the normal rate). At x32 the worker looks again at once whenever it is behind rather than sleeping between bursts, which is worth about a fifth more ticks per second there. The panel shows the speed actually achieved next to the multiplier. A worker doesn't make one simulation faster; it keeps the page responsive.
+
+Drawing is cheap: the map is kept painted on an off-screen canvas and only the visible tiles whose look changed (a plant growing a stage, a ripple of water) are painted again, so a frame costs about 0.7 ms of main-thread time in headless Chromium, down from 1.8 ms, and its output is pixel-for-pixel what the tile-by-tile version drew. What remains of the tick is spread over vision (the longest part), the spatial hash and the brain; much more would need a deeper restructuring of the data layout.
 
 Layout:
 
