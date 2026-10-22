@@ -77,6 +77,7 @@ export class Game {
     for (let i = 0; i < warmup; i++) this.sim.step();
     this.sim.onBirth = (c) => this.renderer.addBirth(c);
     this.sim.onDeath = (c) => this.renderer.addDeath(c);
+    this.sim.onBite = (_, victim) => this.renderer.addHit(victim);
     this.renderer.setWorld(this.sim.world);
     const camera = new Camera(this.sim.world.width, this.sim.world.height);
     camera.centerOn((this.sim.world.width * TILE) / 2, (this.sim.world.height * TILE) / 2);

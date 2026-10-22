@@ -6,16 +6,20 @@ import { Terrain, type World } from './world';
 
 /** Vision rays fan out across the field of view, left to right. */
 export const RAY_COUNT = 5;
-/** Per ray: nearest-weighted food, obstacle proximity, creature proximity, creature relative size. */
-export const RAY_CHANNELS = 4;
-/** Own energy, own speed, food on the current tile. */
-export const SELF_INPUTS = 3;
+/**
+ * Per ray: nearest-weighted food, obstacle proximity, creature proximity, the
+ * creature's size relative to the viewer, and its diet (carnivores look toothy).
+ */
+export const RAY_CHANNELS = 5;
+/** Own energy, own speed, food on the current tile, and whether it was just bitten. */
+export const SELF_INPUTS = 4;
 export const SENSE_INPUT_COUNT = RAY_COUNT * RAY_CHANNELS + SELF_INPUTS;
 
 const FOOD = 0;
 const OBSTACLE = 1;
 const CREATURE = 2;
 const CREATURE_SIZE = 3;
+const CREATURE_DIET = 4;
 
 /**
  * Fill the first SENSE_INPUT_COUNT entries of `c.inputs` from the world.
@@ -70,6 +74,7 @@ export function sense(
       inputs[slot + CREATURE] = nearness;
       inputs[slot + CREATURE_SIZE] =
         (other.traits.size - c.traits.size) / (other.traits.size + c.traits.size);
+      inputs[slot + CREATURE_DIET] = other.traits.diet * 2 - 1;
     }
   }
 
@@ -77,4 +82,5 @@ export function sense(
   inputs[self] = clamp(c.energy / config.creatures.maxEnergy, 0, 1);
   inputs[self + 1] = clamp(c.speed / c.traits.maxSpeed, 0, 1);
   inputs[self + 2] = clamp(world.foodAt(c.x, c.y) / maxFood, 0, 1);
+  inputs[self + 3] = c.hurt;
 }

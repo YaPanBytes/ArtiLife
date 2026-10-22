@@ -3,7 +3,7 @@ import { SENSE_INPUT_COUNT } from './senses';
 
 /** Neurons that carry state from one tick to the next. */
 export const MEMORY_SIZE = 2;
-export const HIDDEN_SIZE = 8;
+export const HIDDEN_SIZE = 10;
 
 export const INPUT_COUNT = SENSE_INPUT_COUNT + MEMORY_SIZE;
 
@@ -12,7 +12,9 @@ export const OUT_TURN = 0;
 export const OUT_THRUST = 1;
 /** The creature tries to reproduce while this is above 0. */
 export const OUT_REPRODUCE = 2;
-export const OUT_MEMORY = 3;
+/** The creature tries to bite whatever is in front of it while this is above 0. */
+export const OUT_BITE = 3;
+export const OUT_MEMORY = 4;
 export const OUTPUT_COUNT = OUT_MEMORY + MEMORY_SIZE;
 
 // Weight layout in the genome: W1 (hidden x inputs), b1, W2 (outputs x hidden), b2.

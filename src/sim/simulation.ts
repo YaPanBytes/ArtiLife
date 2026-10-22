@@ -1,9 +1,10 @@
 import { resolveConfig, type DeepPartial, type SimConfig } from './config';
 import { OUT_REPRODUCE } from './brain';
 import { Creature } from './creature';
-import { appetite, upkeep } from './energy';
+import { appetite, plantEfficiency, upkeep } from './energy';
 import { MAX_VISION_RANGE, mutate, randomGenome } from './genome';
 import { move } from './physics';
+import { findBiteTarget, resolveBites, wantsToBite } from './predation';
 import { Rng } from './rng';
 import { sense } from './senses';
 import { SpatialHash } from './spatial-hash';
@@ -14,11 +15,15 @@ export interface SimStats {
   births: number;
   /** Creatures that ran out of energy. */
   starved: number;
+  /** Creatures killed by a bite. */
+  eaten: number;
+  /** Bites that landed. */
+  bites: number;
   /** Creatures that reached the maximum age. */
   diedOfAge: number;
 }
 
-export type DeathCause = 'starved' | 'age';
+export type DeathCause = 'starved' | 'age' | 'eaten';
 
 /** Owns the world, the creatures and the clock, and advances them one tick at a time. */
 export class Simulation {
@@ -26,10 +31,12 @@ export class Simulation {
   readonly rng: Rng;
   readonly world: World;
   creatures: Creature[] = [];
-  readonly stats: SimStats = { births: 0, starved: 0, diedOfAge: 0 };
+  readonly stats: SimStats = { births: 0, starved: 0, eaten: 0, bites: 0, diedOfAge: 0 };
   tick = 0;
   /** Called after a child is born. Used by the renderer for effects; the sim never reads it. */
   onBirth?: (child: Creature) => void;
+  /** Called for every bite that lands. */
+  onBite?: (attacker: Creature, victim: Creature) => void;
   /** Called when a creature dies, before it is removed. */
   onDeath?: (creature: Creature, cause: DeathCause) => void;
   private nextId = 0;
@@ -89,6 +96,7 @@ export class Simulation {
     this.sensePhase();
     for (const c of this.creatures) move(c, world, config);
     this.eatPhase();
+    this.stats.bites += resolveBites(this.creatures, config, this.onBite).bites;
     for (const c of this.creatures) {
       c.energy -= upkeep(c, config);
       c.age++;
@@ -113,6 +121,10 @@ export class Simulation {
     for (const c of creatures) {
       sense(c, world, creatures, this.hash, config, this.neighbours);
       c.think();
+      c.biting = wantsToBite(c);
+      c.biteTarget = c.biting
+        ? findBiteTarget(c, creatures, this.hash, world, config, this.neighbours)
+        : null;
     }
   }
 
@@ -136,7 +148,7 @@ export class Simulation {
       const tile = world.tileIndex(c.x, c.y);
       const demand = tileDemand[tile];
       const share = demand <= world.food[tile] ? 1 : world.food[tile] / demand;
-      c.energy += wants[i] * share;
+      c.energy += wants[i] * share * plantEfficiency(c, config);
     }
     for (let i = 0; i < n; i++) {
       const tile = world.tileIndex(creatures[i].x, creatures[i].y);
@@ -151,8 +163,10 @@ export class Simulation {
     const alive: Creature[] = [];
     for (const c of this.creatures) {
       if (c.energy <= 0) {
-        this.stats.starved++;
-        this.onDeath?.(c, 'starved');
+        const cause = c.hurt ? 'eaten' : 'starved';
+        if (cause === 'eaten') this.stats.eaten++;
+        else this.stats.starved++;
+        this.onDeath?.(c, cause);
       } else if (maxAge > 0 && c.age >= maxAge) {
         this.stats.diedOfAge++;
         this.onDeath?.(c, 'age');

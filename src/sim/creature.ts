@@ -13,6 +13,14 @@ export class Creature {
   age = 0;
   /** Current speed in tiles per tick, along the heading. */
   speed = 0;
+  /** 1 if another creature bit this one last tick, else 0. */
+  hurt = 0;
+  /** Who this creature is trying to bite this tick, if anyone. */
+  biteTarget: Creature | null = null;
+  /** Whether the brain asked for a bite this tick (a cost, even with no target). */
+  biting = false;
+  /** Damage other creatures plan to do to this one this tick. Scratch space for the bite phase. */
+  incomingDamage = 0;
 
   constructor(
     readonly id: number,

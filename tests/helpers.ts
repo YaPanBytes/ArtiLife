@@ -18,7 +18,7 @@ export function emptyWorld(overrides: DeepPartial<SimConfig> = {}) {
 
 /**
  * A creature whose genome is all zeros except the trait genes given. Trait genes are
- * normalised: 0 -> the trait's minimum, 1 -> its maximum. Unspecified ones default to 0.5.
+ * normalised: 0 -> the trait's minimum, 1 -> its maximum. Unspecified ones default to 0.5, except diet, which defaults to 0 (a plant eater).
  * An all-zero brain outputs 0 everywhere: no turning, half thrust, no reproducing.
  */
 export function makeCreature(
@@ -29,7 +29,7 @@ export function makeCreature(
   energy = 50,
 ) {
   const genome = new Float32Array(GENOME_LENGTH);
-  TRAIT_ORDER.forEach((name, i) => (genome[i] = genes[name] ?? 0.5));
+  TRAIT_ORDER.forEach((name, i) => (genome[i] = genes[name] ?? (name === 'diet' ? 0 : 0.5)));
   return new Creature(0, x, y, heading, energy, genome);
 }
 

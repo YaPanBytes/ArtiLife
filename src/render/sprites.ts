@@ -16,15 +16,27 @@ function toCanvas(img: PixelImage): Sprite {
 
 // Pure image builders (no DOM), exported so the art can be tested.
 
-export function creatureImage(hue: number, frame: 0 | 1, facingLeft: boolean): PixelImage {
+export function creatureImage(
+  hue: number,
+  frame: 0 | 1,
+  facingLeft: boolean,
+  predator = false,
+): PixelImage {
   const { body, shade } = creatureColors(hue);
-  const rows = frame === 0 ? art.CREATURE_WALK_A : art.CREATURE_WALK_B;
+  const rows = predator
+    ? frame === 0
+      ? art.PREDATOR_WALK_A
+      : art.PREDATOR_WALK_B
+    : frame === 0
+      ? art.CREATURE_WALK_A
+      : art.CREATURE_WALK_B;
   const img = renderPattern(rows, {
     '1': COLORS.black,
     '2': body,
     '3': shade,
     '4': COLORS.white,
     '5': COLORS.black,
+    '6': COLORS.red,
   });
   return facingLeft ? flipHorizontal(img) : img;
 }
@@ -75,6 +87,9 @@ export const heartImages = () => {
 export const sparkleImages = (): PixelImage[] =>
   art.SPARKLE_FRAMES.map((rows) => renderPattern(rows, { '1': COLORS.white, '2': nes(0x28) }));
 
+export const hitImages = (): PixelImage[] =>
+  art.HIT_FRAMES.map((rows) => renderPattern(rows, { '1': COLORS.white, '2': COLORS.red }));
+
 export const puffImages = (): PixelImage[] =>
   art.PUFF_FRAMES.map((rows) =>
     renderPattern(rows, { '1': COLORS.grayLight, '2': COLORS.grayDark }),
@@ -112,19 +127,28 @@ export class Atlas {
   };
   readonly sparkle = sparkleImages().map(toCanvas);
   readonly puff = puffImages().map(toCanvas);
+  readonly hit = hitImages().map(toCanvas);
   private readonly creatureCache = new Map<number, Sprite>();
 
   /**
    * A creature sprite. Hues are snapped to the palette, so there are only a few
    * dozen distinct sprites. Large creatures use the same art at double size.
    */
-  creature(hue: number, frame: 0 | 1, facingLeft: boolean, large: boolean): Sprite {
+  creature(
+    hue: number,
+    frame: 0 | 1,
+    facingLeft: boolean,
+    large: boolean,
+    predator = false,
+  ): Sprite {
     const column = Math.min(HUE_COLUMN_COUNT - 1, Math.floor(hue * HUE_COLUMN_COUNT));
-    const key = ((column * 2 + frame) * 2 + (facingLeft ? 1 : 0)) * 2 + (large ? 1 : 0);
+    const key =
+      (((column * 2 + frame) * 2 + (facingLeft ? 1 : 0)) * 2 + (large ? 1 : 0)) * 2 +
+      (predator ? 1 : 0);
     let sprite = this.creatureCache.get(key);
     if (!sprite) {
       // Use the middle of the hue bucket so the column matches `column`.
-      const img = creatureImage((column + 0.5) / HUE_COLUMN_COUNT, frame, facingLeft);
+      const img = creatureImage((column + 0.5) / HUE_COLUMN_COUNT, frame, facingLeft, predator);
       sprite = toCanvas(large ? scaleUp(img, 2) : img);
       this.creatureCache.set(key, sprite);
     }

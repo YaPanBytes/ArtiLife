@@ -4,7 +4,7 @@ An artificial-life ecosystem. Creatures with small neural-net brains and heritab
 
 You change the rules of the world (food supply, metabolic cost, mutation rate, terrain, disasters) and watch what evolves: grazing herds, ambush predators, scavengers, parasites, boom-and-bust cycles, and strategies nobody designed.
 
-> **Status: early development.** Steps 1 to 4 of the [implementation plan](#implementation-plan) are done: the world and food field, creatures with genomes, neural-net brains, vision and movement, a full life cycle (eating, energy costs, death, reproduction, mutation), and the NES-style pixel renderer with live controls. Populations sustain themselves and evolve, and you can watch it. There is no predation yet (step 5) and no inspector or charts (step 6). Sections marked _(planned)_ are targets, not features.
+> **Status: early development.** Steps 1 to 5 of the [implementation plan](#implementation-plan) are done: the world and food field, creatures with genomes, neural-net brains, vision and movement, a full life cycle (eating, energy costs, death, reproduction, mutation), the NES-style pixel renderer with live controls, and predation with a diet gene. Populations sustain themselves, evolve, and (with the default rules) split into plant eaters and hunters. There is no inspector or charts yet (step 6). Sections marked _(planned)_ are targets, not features.
 
 ## Core idea
 
@@ -35,16 +35,25 @@ Each creature has:
 | **State**       | Position, heading, energy, age, generation, lineage ID.                                                                                       |
 | **Brain**       | A small feed-forward neural net with a few memory neurons that carry state between ticks.                                                     |
 
-**Brain inputs:** 5 vision rays across the field of view, each reporting nearby food, nearby obstacles (water and rock), the nearest creature and its size relative to the viewer. Then own energy, own speed, food on the current tile, and 2 memory neurons. Colour perception comes later, with signals.
+**Brain inputs:** 5 vision rays across the field of view, each reporting nearby food, nearby obstacles (water and rock), the nearest creature, its size relative to the viewer, and its diet (carnivores look toothy). Then own energy, own speed, food on the current tile, whether it was just bitten, and 2 memory neurons.
 
-**Brain outputs:** turn, thrust and reproduce, plus the 2 memory values for the next tick. Bite and an optional signal (a colour or sound others can perceive) are added in later steps.
+**Brain outputs:** turn, thrust, reproduce and bite, plus the 2 memory values for the next tick. An optional signal (a colour or sound others can perceive) is added in a later step.
 
 ### Energy economy
 
-- **Gain:** a creature eats the plants on the tile it stands on, automatically, up to an appetite that grows with its size and stops at the energy cap. When several creatures share a tile with too little food, each gets a share in proportion to its appetite. Eating other creatures (with a diet gene, so plant specialists are bad at meat) arrives with predation in step 5.
+- **Gain:** a creature eats the plants on the tile it stands on, automatically, up to an appetite that grows with its size and stops at the energy cap. When several creatures share a tile with too little food, each gets a share in proportion to its appetite. Eating other creatures is covered under Predation below.
 - **Cost per tick:** staying alive (grows with size), moving (grows with speed² and size) and seeing (grows with vision range). Bigger bodies eat more but pay more, and faster or farther-seeing creatures pay for it, so no trait is free.
-- **Death:** energy reaches zero, or old age (configurable, can be turned off). Being eaten arrives in step 5.
+- **Death:** energy reaches zero, being bitten to death, or old age (configurable, can be turned off).
 - **Reproduction:** the brain has a reproduce output. A creature reproduces when that output is positive, its energy is above its own threshold (a gene), and the population cap hasn't been reached. The parent pays a fixed energy cost and only part of it reaches the child, so reproduction always loses energy.
+
+### Predation and diet
+
+- **Diet gene** (0 to 1): a plant eater digests plants fully and meat not at all; a carnivore digests meat fully and plants at a reduced rate (the `DIET COST` rule). In between, both partly. Founders are mostly plant eaters, so hunting has to evolve.
+- **Bite:** the brain has a bite output. A bite hits the nearest creature in a cone in front (reach and angle are rules). It takes energy from the victim, scaled by the biter's size and diet, so plant eaters bite weakly and only carnivores hit hard. The biter keeps part of what it took (`MEAT YIELD`) according to its diet. Every bite attempt costs energy, even a miss.
+- All bites in a tick are settled together, so the result doesn't depend on the order creatures happen to be stored in. When several bites would take more than a victim has, they share what is left.
+- Creatures can see how toothy others are, and feel being bitten, so both chasing and fleeing can evolve.
+- In the pixel view carnivores (diet above 0.5) are drawn with horns and a red pupil, and a bite flashes at the victim.
+- **How it plays out:** in my runs with the default rules, carnivores appear within the first few thousand ticks and settle at about a third to a half of the population, living off the plant eaters, and populations of 100 to 200 survived 50,000 ticks on four different seeds. Predation becomes the main cause of death. Make bites free, or meat yield high, and hunters can wipe out their prey and crash the world. Make them costly and hunters never appear. The sliders let you explore this.
 
 ### Evolution
 
@@ -87,13 +96,13 @@ ArtiLife looks like an 8-bit NES game, with the information density of Dwarf For
 
 - 8×8 sprites, or 16×16 for big bodies (the same art at double size), with a 2-frame walk animation, mirrored left and right.
 - Colour comes from the hue gene, snapped to the palette: a light body, a darker shade and a black outline. Related creatures look related.
-- A sparkle when a creature is born and a puff of smoke when one dies.
+- A sparkle when a creature is born, a puff of smoke when one dies, and a red burst when a bite lands. Carnivores get horns and a red pupil.
 
 **HUD** (Zelda-style header)
 
 - Minimap with creature dots and a box for the current view.
 - Counters: population, births, deaths, mean generation, and the tick (or year and season when seasons are on).
-- **B** slot: portrait of the followed creature. **A** slot: its size, speed, vision range and field-of-view genes as four bars.
+- **B** slot: portrait of the followed creature. **A** slot: its size, speed, vision range, field-of-view and diet genes as five bars.
 - **-LIFE-** hearts: the followed creature's energy, or the population's average when nobody is followed. Ten hearts, in half-heart steps.
 - Pixel font (Press Start 2P), blue-bordered panels, black background.
 
@@ -102,7 +111,7 @@ ArtiLife looks like an 8-bit NES game, with the information density of Dwarf For
 - Click a creature to follow it (the camera tracks it and its brackets blink). Click empty ground or press `Esc` to let go.
 - Drag or use the arrow keys / `WASD` to scroll. Click the minimap to jump there.
 - `Space` pauses, `.` steps one tick, `[` and `]` change speed (x1 to x32).
-- The side panel has sliders for the world's rules, which change the running simulation immediately: plant regrowth and cap, seasons, the cost of living, moving and seeing, eating rate, birth cost, lifespan, population cap, and mutation rate and size. A "new world" group (water, rock, fertility, starting population) and a seed box apply when you press GO or RND.
+- The side panel has sliders for the world's rules, which change the running simulation immediately: plant regrowth and cap, seasons, the cost of living, moving and seeing, eating rate, the bite (power, cost, meat yield, diet trade-off, weak bite), birth cost, lifespan, population cap, and mutation rate and size. A "new world" group (water, rock, fertility, starting population) and a seed box apply when you press GO or RND.
 - Open the browser console and type `artilife` to reach the running game, e.g. `artilife.sim.creatures`.
 
 **Planned**
@@ -111,7 +120,7 @@ ArtiLife looks like an 8-bit NES game, with the information density of Dwarf For
 - **Overlays:** energy, age, lineage colour, diet and food density, drawn as palette-limited tints.
 - **Inspector:** the followed creature's genome and brain graph with live neuron activations.
 - **Dwarf Fortress-style event log** ("A predator lineage has appeared in the north."), plus population and trait charts and a lineage tree.
-- Hit and bite flashes (with predation), save/load of runs, screenshots, and optional chiptune sound.
+- Save/load of runs, screenshots, and optional chiptune sound.
 
 ## Tech
 
@@ -139,7 +148,7 @@ tests/
 2. **Creatures and brains** _(done)_: genome, trait decoding, MLP brain, vision rays, movement physics.
 3. **Energy and life cycle** _(done)_: eating, metabolism, death, asexual reproduction, mutation. First evolving run.
 4. **Renderer and controls** _(done)_: pixel renderer (NES palette, tile map, creature sprites with walk frames), Zelda-style HUD with minimap, pause/speed, live parameter sliders.
-5. **Predation and diet**: bite mechanic, diet gene, meat vs. plant efficiency. This is where predators can first appear.
+5. **Predation and diet** _(done)_: bite mechanic, diet gene, meat vs. plant efficiency. This is where predators can first appear.
 6. **Analysis tools**: inspector, brain viewer, charts, lineage tracking, event log, glyph (ASCII) mode.
 7. **Richer worlds**: terrain, seasons, events, sexual reproduction, creature signals.
 8. **Polish**: save/load, shareable seeds, performance pass (worker, WebGL), presets such as "Lush Eden", "Dust Bowl" and "Ice Age".
@@ -171,7 +180,7 @@ To watch evolution as numbers, run the headless simulator:
 npm run sim -- --seed 1 --ticks 20000 --every 1000
 ```
 
-It prints one row every N ticks: population, births, deaths by starvation and by old age, mean generation and energy, and the mean of each trait.
+It prints one row every N ticks: population, births, deaths by starvation, by being eaten and by old age, bites landed, the share of carnivores, mean generation and energy, and the mean of each trait. Change any rule with `--set`, for example `--set predation.biteCost=0.3 --set food.regrowRate=0.03`.
 
 ## License
 

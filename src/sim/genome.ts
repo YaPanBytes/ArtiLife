@@ -17,6 +17,8 @@ export interface Traits {
   mutationRate: number;
   /** Fraction of max energy the creature must hold before it will reproduce. */
   reproThreshold: number;
+  /** 0 digests only plants, 1 only meat. In between, both badly. */
+  diet: number;
 }
 
 interface TraitSpec {
@@ -32,6 +34,7 @@ const TRAIT_SPECS: Record<keyof Traits, TraitSpec> = {
   hue: { min: 0, max: 1 },
   mutationRate: { min: 0.01, max: 0.15 },
   reproThreshold: { min: 0.5, max: 1 },
+  diet: { min: 0, max: 1 },
 };
 
 /** Brain weights are kept within this range so mutation can't make them run away. */
@@ -48,6 +51,9 @@ export const GENOME_LENGTH = TRAIT_COUNT + BRAIN_WEIGHT_COUNT;
 export function randomGenome(rng: Rng): Float32Array {
   const genome = new Float32Array(GENOME_LENGTH);
   for (let i = 0; i < TRAIT_COUNT; i++) genome[i] = rng.next();
+  // Founders are mostly plant eaters; meat eating has to evolve.
+  const diet = TRAIT_ORDER.indexOf('diet');
+  genome[diet] = genome[diet] ** 3;
   initBrainWeights(rng, genome.subarray(TRAIT_COUNT));
   return genome;
 }

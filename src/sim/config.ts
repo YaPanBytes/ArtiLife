@@ -38,6 +38,22 @@ export interface SimConfig {
     /** No births while the population is at this size. */
     maxPopulation: number;
   };
+  predation: {
+    /** How far a creature can reach with a bite, in tiles. */
+    biteRange: number;
+    /** Half-width of the biting cone in front of the creature, in radians. */
+    biteArc: number;
+    /** Energy a size-1 pure carnivore takes from its victim with one bite. */
+    biteDamage: number;
+    /** A pure plant eater bites with this fraction of a carnivore's force (0-1). */
+    weakBite: number;
+    /** Energy burned by every bite attempt, whether or not it lands. */
+    biteCost: number;
+    /** Fraction of the energy taken that a pure carnivore can digest. */
+    meatYield: number;
+    /** Plant digestion a pure carnivore loses (0-1). At 1 it can't eat plants at all. */
+    dietTradeoff: number;
+  };
   mutation: {
     /** Standard deviation of a gene change, on the gene's own scale. */
     magnitude: number;
@@ -90,6 +106,15 @@ export const DEFAULT_CONFIG: SimConfig = {
     birthCost: 40,
     birthEfficiency: 0.5,
     maxPopulation: 800,
+  },
+  predation: {
+    biteRange: 1.2,
+    biteArc: 0.9,
+    biteDamage: 10,
+    weakBite: 0.1,
+    biteCost: 0.1,
+    meatYield: 0.8,
+    dietTradeoff: 0.5,
   },
   mutation: { magnitude: 0.1, rateMultiplier: 1 },
   terrain: { scale: 16, waterFraction: 0.1, rockFraction: 0.05, fertilityContrast: 0.6 },
@@ -167,6 +192,16 @@ export function resolveConfig(overrides: DeepPartial<SimConfig> = {}): SimConfig
     Number.isInteger(c.creatures.maxPopulation) && c.creatures.maxPopulation >= 0,
     'creatures.maxPopulation: must be a non-negative integer',
   );
+  check(c.predation.biteRange > 0, 'predation.biteRange: must be positive');
+  check(
+    c.predation.biteArc > 0 && c.predation.biteArc <= Math.PI,
+    'predation.biteArc: must be above 0 and at most PI',
+  );
+  check(c.predation.biteDamage >= 0, 'predation.biteDamage: must not be negative');
+  check(isFraction(c.predation.weakBite), 'predation.weakBite: must be between 0 and 1');
+  check(isFraction(c.predation.dietTradeoff), 'predation.dietTradeoff: must be between 0 and 1');
+  check(c.predation.biteCost >= 0, 'predation.biteCost: must not be negative');
+  check(isFraction(c.predation.meatYield), 'predation.meatYield: must be between 0 and 1');
   check(c.mutation.magnitude >= 0, 'mutation.magnitude: must not be negative');
   check(c.mutation.rateMultiplier >= 0, 'mutation.rateMultiplier: must not be negative');
   check(c.terrain.scale >= 1, 'terrain.scale: must be at least 1');

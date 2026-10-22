@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { GENOME_LENGTH, TRAIT_COUNT, WEIGHT_LIMIT, mutate, randomGenome } from '../src/sim/genome';
+import {
+  GENOME_LENGTH,
+  TRAIT_COUNT,
+  TRAIT_ORDER,
+  WEIGHT_LIMIT,
+  mutate,
+  randomGenome,
+} from '../src/sim/genome';
 import { Rng } from '../src/sim/rng';
 
 const count = (a: Float32Array, b: Float32Array) => a.filter((v, i) => v !== b[i]).length;
@@ -28,7 +35,7 @@ describe('mutate', () => {
   it('changes about mutationRate of the genes on average', () => {
     const rng = new Rng(6);
     const g = new Float32Array(GENOME_LENGTH).fill(0.3);
-    g[TRAIT_COUNT - 2] = (0.1 - 0.01) / (0.15 - 0.01); // mutationRate trait = 0.1 (second-last trait)
+    g[TRAIT_ORDER.indexOf('mutationRate')] = (0.1 - 0.01) / (0.15 - 0.01); // mutation rate 0.1
     let changed = 0;
     const trials = 200;
     for (let i = 0; i < trials; i++) changed += count(mutate(g, rng, 0.1, 1), g);

@@ -12,6 +12,10 @@ const FONT = '8px "Press Start 2P"';
 /** Creatures at least this big are drawn at double size (16x16). */
 const LARGE_SIZE = 1.3;
 const EFFECT_FRAMES = 24;
+/** Bite flashes are quick. */
+const HIT_FRAMES = 8;
+/** Creatures with at least this diet are drawn as predators. */
+const PREDATOR_DIET = 0.5;
 const MAX_EFFECTS = 200;
 
 /** Plant stage thresholds, as a fraction of a full tile. */
@@ -24,10 +28,11 @@ const GENE_INDEX = {
   speed: TRAIT_ORDER.indexOf('maxSpeed'),
   vision: TRAIT_ORDER.indexOf('visionRange'),
   fov: TRAIT_ORDER.indexOf('visionFov'),
+  diet: TRAIT_ORDER.indexOf('diet'),
 };
 
 interface Effect {
-  kind: 'birth' | 'death';
+  kind: 'birth' | 'death' | 'hit';
   /** World position in tiles. */
   x: number;
   y: number;
@@ -67,6 +72,10 @@ export class Renderer {
 
   addDeath(c: Creature): void {
     this.addEffect('death', c.x, c.y);
+  }
+
+  addHit(victim: Creature): void {
+    this.addEffect('hit', victim.x, victim.y);
   }
 
   private addEffect(kind: Effect['kind'], x: number, y: number): void {
@@ -135,7 +144,13 @@ export class Renderer {
       const size = large ? 2 * TILE : TILE;
       if (sx < -size || sx > FIELD_W + size || sy < -size || sy > FIELD_H + size) continue;
       const walkFrame = c.speed > 0.03 ? ((((this.frame >> 3) + c.id) & 1) as 0 | 1) : 0;
-      const sprite = atlas.creature(c.traits.hue, walkFrame, Math.cos(c.heading) < 0, large);
+      const sprite = atlas.creature(
+        c.traits.hue,
+        walkFrame,
+        Math.cos(c.heading) < 0,
+        large,
+        c.traits.diet >= PREDATOR_DIET,
+      );
       const x = Math.round(sx - size / 2);
       const y = HUD_H + Math.round(sy - size / 2);
       ctx.drawImage(sprite, x, y);
@@ -164,13 +179,13 @@ export class Renderer {
     for (let i = effects.length - 1; i >= 0; i--) {
       const e = effects[i];
       const age = this.frame - e.startFrame;
-      if (age >= EFFECT_FRAMES) {
+      if (age >= (e.kind === 'hit' ? HIT_FRAMES : EFFECT_FRAMES)) {
         effects.splice(i, 1);
         continue;
       }
-      const frames = e.kind === 'birth' ? atlas.sparkle : atlas.puff;
-      const sprite =
-        frames[Math.min(frames.length - 1, Math.floor((age / EFFECT_FRAMES) * frames.length))];
+      const frames = e.kind === 'birth' ? atlas.sparkle : e.kind === 'hit' ? atlas.hit : atlas.puff;
+      const life = e.kind === 'hit' ? HIT_FRAMES : EFFECT_FRAMES;
+      const sprite = frames[Math.min(frames.length - 1, Math.floor((age / life) * frames.length))];
       const [sx, sy] = view.camera.toScreen(e.x * TILE, e.y * TILE);
       if (sx < -TILE || sx > FIELD_W + TILE || sy < -TILE || sy > FIELD_H + TILE) continue;
       ctx.drawImage(sprite, Math.round(sx - TILE / 2), HUD_H + Math.round(sy - TILE / 2));
@@ -203,7 +218,7 @@ export class Renderer {
     const rows = [
       `POP  ${formatCount(creatures.length, 4)}`,
       `BORN ${formatCount(stats.births, 4)}`,
-      `DEAD ${formatCount(stats.starved + stats.diedOfAge, 4)}`,
+      `DEAD ${formatCount(stats.starved + stats.diedOfAge + stats.eaten, 4)}`,
       `GEN  ${formatCount(generation, 4)}`,
       season ? `Y${formatCount(season.year, 2)} ${season.name}` : `T${sim.tick}`,
     ];
@@ -215,10 +230,20 @@ export class Renderer {
     this.drawSlot(146, 14);
     this.drawSlot(174, 14);
     if (selected) {
-      ctx.drawImage(atlas.creature(selected.traits.hue, 0, false, true), 150, 22);
-      const genes = [GENE_INDEX.size, GENE_INDEX.speed, GENE_INDEX.vision, GENE_INDEX.fov];
+      ctx.drawImage(
+        atlas.creature(selected.traits.hue, 0, false, true, selected.traits.diet >= PREDATOR_DIET),
+        150,
+        22,
+      );
+      const genes = [
+        GENE_INDEX.size,
+        GENE_INDEX.speed,
+        GENE_INDEX.vision,
+        GENE_INDEX.fov,
+        GENE_INDEX.diet,
+      ];
       genes.forEach((gene, i) => {
-        const y = 20 + i * 6;
+        const y = 17 + i * 5;
         this.fillRect(COLORS.grayDark, 178, y, 16, 3);
         this.fillRect(COLORS.white, 178, y, Math.max(1, Math.round(selected.genome[gene] * 16)), 3);
       });

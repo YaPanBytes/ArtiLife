@@ -5,6 +5,7 @@ import {
   creatureImage,
   groundImage,
   heartImages,
+  hitImages,
   plantImages,
   puffImages,
   rockImage,
@@ -105,5 +106,32 @@ describe('sprite art', () => {
       expect(is8x8(img)).toBe(true);
       expect(opaqueCount(img)).toBeGreaterThan(0);
     }
+  });
+
+  it('draws predators differently from plant eaters, with a red pupil, still facing the right way', () => {
+    const plain = creatureImage(0.5, 0, false, false);
+    const predator = creatureImage(0.5, 0, false, true);
+    expect(is8x8(predator)).toBe(true);
+    expect(Array.from(predator.data)).not.toEqual(Array.from(plain.data));
+    const red = (img: PixelImage) => {
+      let n = 0;
+      for (let i = 0; i < img.data.length; i += 4) {
+        if (img.data[i] === 248 && img.data[i + 1] === 56 && img.data[i + 2] === 0) n++;
+      }
+      return n;
+    };
+    expect(red(predator)).toBe(1);
+    expect(red(plain)).toBe(0);
+    const flipped = creatureImage(0.5, 0, true, true);
+    expect(whitePixelColumns(flipped).every((x) => x < 4)).toBe(true);
+    // Both walk frames exist for predators too.
+    expect(Array.from(creatureImage(0.5, 1, false, true).data)).not.toEqual(
+      Array.from(predator.data),
+    );
+  });
+
+  it('has two frames for the bite hit', () => {
+    expect(hitImages().length).toBe(2);
+    for (const img of hitImages()) expect(opaqueCount(img)).toBeGreaterThan(0);
   });
 });

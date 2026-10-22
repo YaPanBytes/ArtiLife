@@ -1,9 +1,22 @@
 import type { SimConfig } from './config';
 import type { Creature } from './creature';
 
-/** How much plant energy a creature would like to eat this tick. */
+/** Share of plant energy a creature can digest: all for a pure herbivore, less the more carnivorous it is. */
+export function plantEfficiency(c: Creature, config: SimConfig): number {
+  return 1 - config.predation.dietTradeoff * c.traits.diet;
+}
+
+/** Share of meat energy a creature can digest, before the world's meat yield. */
+export function meatEfficiency(c: Creature): number {
+  return c.traits.diet;
+}
+
+/** How much plant energy a creature would like to take from its tile this tick. */
 export function appetite(c: Creature, config: SimConfig): number {
-  const room = config.creatures.maxEnergy - c.energy;
+  const efficiency = plantEfficiency(c, config);
+  if (efficiency <= 0) return 0;
+  // No point eating more than will fit once digested.
+  const room = (config.creatures.maxEnergy - c.energy) / efficiency;
   return Math.max(0, Math.min(config.creatures.eatRate * c.traits.size, room));
 }
 
