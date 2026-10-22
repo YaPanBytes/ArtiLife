@@ -1,12 +1,16 @@
 import { resolveConfig, type DeepPartial, type SimConfig } from './config';
 import { OUT_REPRODUCE } from './brain';
 import { Creature } from './creature';
+import { Chronicler, SPECIATION_ANNOUNCE_GAP } from './chronicle';
 import { appetite, plantEfficiency, upkeep } from './energy';
+import { EventLog } from './events';
 import { MAX_VISION_RANGE, mutate, randomGenome } from './genome';
+import { DIET_BINS, History, type Sample } from './history';
 import { move } from './physics';
 import { findBiteTarget, resolveBites, wantsToBite } from './predation';
 import { Rng } from './rng';
 import { sense } from './senses';
+import { SpeciesTracker, dietClass } from './species';
 import { SpatialHash } from './spatial-hash';
 import { World } from './world';
 
@@ -33,6 +37,11 @@ export class Simulation {
   creatures: Creature[] = [];
   readonly stats: SimStats = { births: 0, starved: 0, eaten: 0, bites: 0, diedOfAge: 0 };
   tick = 0;
+  readonly events = new EventLog();
+  readonly history = new History();
+  readonly species: SpeciesTracker;
+  private readonly chronicle = new Chronicler();
+  private lastSpeciationAnnounced = -Infinity;
   /** Called after a child is born. Used by the renderer for effects; the sim never reads it. */
   onBirth?: (child: Creature) => void;
   /** Called for every bite that lands. */
@@ -50,6 +59,30 @@ export class Simulation {
 
   constructor(overrides: DeepPartial<SimConfig> = {}) {
     this.config = resolveConfig(overrides);
+    this.species = new SpeciesTracker(
+      () => this.config.species.threshold,
+      (child, parent) => {
+        // Most branchings are quiet drift. Announce a change of diet class, and not too often.
+        if (dietClass(child.diet) === dietClass(parent.diet)) return;
+        if (this.tick - this.lastSpeciationAnnounced < SPECIATION_ANNOUNCE_GAP) return;
+        this.lastSpeciationAnnounced = this.tick;
+        this.events.push(
+          this.tick,
+          'speciation',
+          Chronicler.speciationText(child.id, parent.id, child.diet),
+          true,
+        );
+      },
+      (species) => {
+        if (Chronicler.isNotable(species.peak)) {
+          this.events.push(
+            this.tick,
+            'extinction',
+            Chronicler.extinctionText(species.id, species.peak),
+          );
+        }
+      },
+    );
     this.rng = new Rng(this.config.seed);
     this.world = new World(this.config, this.rng);
     const { initialCount } = this.config.creatures;
@@ -80,6 +113,7 @@ export class Simulation {
         this.config.creatures.startEnergy,
         randomGenome(rng),
       );
+      this.species.addFounder(creature, this.tick);
       this.creatures.push(creature);
       return creature;
     }
@@ -104,6 +138,36 @@ export class Simulation {
     this.removeDead();
     this.reproducePhase();
     this.tick++;
+    this.chronicle.update(this);
+    if (this.history.due(this.tick)) this.history.record(this.tick, this.sample());
+  }
+
+  /** The population as it is now: one value for each tracked series. */
+  sample(): Sample {
+    const { creatures } = this;
+    const n = creatures.length;
+    const mean = (f: (c: Creature) => number) =>
+      n === 0 ? 0 : creatures.reduce((sum, c) => sum + f(c), 0) / n;
+    return {
+      population: n,
+      meanEnergy: mean((c) => c.energy),
+      species: this.species.aliveCount,
+      carnivores: n === 0 ? 0 : creatures.filter((c) => c.traits.diet >= 0.6).length / n,
+      size: mean((c) => c.traits.size),
+      speed: mean((c) => c.traits.maxSpeed),
+      vision: mean((c) => c.traits.visionRange),
+      fov: mean((c) => c.traits.visionFov),
+      diet: mean((c) => c.traits.diet),
+    };
+  }
+
+  /** How many creatures have a diet in each tenth of the 0-1 range. */
+  dietHistogram(): number[] {
+    const bins = new Array<number>(DIET_BINS).fill(0);
+    for (const c of this.creatures) {
+      bins[Math.min(DIET_BINS - 1, Math.floor(c.traits.diet * DIET_BINS))]++;
+    }
+    return bins;
   }
 
   private sensePhase(): void {
@@ -162,6 +226,8 @@ export class Simulation {
     const { maxAge } = this.config.creatures;
     const alive: Creature[] = [];
     for (const c of this.creatures) {
+      const dying = c.energy <= 0 || (maxAge > 0 && c.age >= maxAge);
+      if (dying) this.species.remove(c, this.tick);
       if (c.energy <= 0) {
         const cause = c.hurt ? 'eaten' : 'starved';
         if (cause === 'eaten') this.stats.eaten++;
@@ -215,6 +281,8 @@ export class Simulation {
       parent.id,
       parent.generation + 1,
     );
+    child.birthTick = this.tick;
+    this.species.addChild(child, parent, this.tick);
     this.onBirth?.(child);
     return child;
   }

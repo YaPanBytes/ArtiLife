@@ -40,7 +40,8 @@ export function initBrainWeights(rng: Rng, weights: Float32Array): void {
  * reads its weights straight from a genome view.
  */
 export class Brain {
-  private readonly hidden = new Float32Array(HIDDEN_SIZE);
+  /** Hidden neuron values from the last call to `think`. */
+  readonly hidden = new Float32Array(HIDDEN_SIZE);
 
   constructor(readonly weights: Float32Array) {
     if (weights.length !== BRAIN_WEIGHT_COUNT) {

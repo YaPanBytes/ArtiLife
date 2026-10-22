@@ -13,6 +13,12 @@ export class Creature {
   age = 0;
   /** Current speed in tiles per tick, along the heading. */
   speed = 0;
+  /** Which species this creature belongs to. Set by the species tracker. */
+  speciesId = 0;
+  /** The genome new members are compared with to decide species membership. */
+  speciesRef: Float32Array;
+  /** Tick this creature was born (0 for the first creatures). */
+  birthTick = 0;
   /** 1 if another creature bit this one last tick, else 0. */
   hurt = 0;
   /** Who this creature is trying to bite this tick, if anyone. */
@@ -37,6 +43,7 @@ export class Creature {
     if (genome.length !== GENOME_LENGTH) {
       throw new RangeError(`genome needs ${GENOME_LENGTH} genes, got ${genome.length}`);
     }
+    this.speciesRef = genome;
     this.traits = decodeTraits(genome);
     this.brain = new Brain(brainWeights(genome));
   }

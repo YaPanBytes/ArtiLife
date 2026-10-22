@@ -54,6 +54,13 @@ export interface SimConfig {
     /** Plant digestion a pure carnivore loses (0-1). At 1 it can't eat plants at all. */
     dietTradeoff: number;
   };
+  species: {
+    /**
+     * How far a creature's genome may drift from its species' founding genome
+     * before it counts as a new species. For display and analysis only.
+     */
+    threshold: number;
+  };
   mutation: {
     /** Standard deviation of a gene change, on the gene's own scale. */
     magnitude: number;
@@ -116,6 +123,7 @@ export const DEFAULT_CONFIG: SimConfig = {
     meatYield: 0.8,
     dietTradeoff: 0.5,
   },
+  species: { threshold: 0.15 },
   mutation: { magnitude: 0.1, rateMultiplier: 1 },
   terrain: { scale: 16, waterFraction: 0.1, rockFraction: 0.05, fertilityContrast: 0.6 },
   food: {
@@ -202,6 +210,7 @@ export function resolveConfig(overrides: DeepPartial<SimConfig> = {}): SimConfig
   check(isFraction(c.predation.dietTradeoff), 'predation.dietTradeoff: must be between 0 and 1');
   check(c.predation.biteCost >= 0, 'predation.biteCost: must not be negative');
   check(isFraction(c.predation.meatYield), 'predation.meatYield: must be between 0 and 1');
+  check(c.species.threshold > 0, 'species.threshold: must be positive');
   check(c.mutation.magnitude >= 0, 'mutation.magnitude: must not be negative');
   check(c.mutation.rateMultiplier >= 0, 'mutation.rateMultiplier: must not be negative');
   check(c.terrain.scale >= 1, 'terrain.scale: must be at least 1');

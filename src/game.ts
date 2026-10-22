@@ -1,18 +1,17 @@
 import { Camera } from './render/camera';
 import { HUD_H, MINIMAP_SIZE, SCREEN_H, SCREEN_W, TILE } from './render/layout';
 import { Renderer } from './render/renderer';
-import type { ViewState } from './render/view';
+import { OVERLAYS, type ViewState } from './render/view';
+import { SimHost } from './runtime/host';
+import type { Backend } from './runtime/types';
 import { resolveConfig, type SimConfig } from './sim/config';
-import { Simulation } from './sim/simulation';
 import type { Control } from './ui/controls';
 import { Panel } from './ui/panel';
 import { pickCreature } from './ui/pick';
 
-/** Simulation ticks per 1/60 s frame, one step per speed setting. */
+/** Simulation ticks per 1/60 s, one step per speed setting. */
 export const SPEEDS = [1, 2, 4, 8, 16, 32] as const;
 const DEFAULT_SPEED = 2;
-/** Give up on catching up if a frame's ticks take longer than this (ms). */
-const TICK_BUDGET_MS = 12;
 const PAN_SPEED = 3;
 /** How close a click has to be to a creature to select it, in tiles. */
 const PICK_RADIUS = 1.5;
@@ -28,14 +27,13 @@ export interface GameOptions {
 
 /** Ties the simulation, renderer, panel and input together and runs the frame loop. */
 export class Game {
-  sim!: Simulation;
+  readonly backend: Backend;
   readonly view: ViewState;
   private readonly renderer: Renderer;
   private readonly panel: Panel;
   /** The rules as the player has set them; used to build each new world. */
   private readonly settings: SimConfig;
   private speedIndex = DEFAULT_SPEED;
-  private tickDebt = 0;
   private lastTime = 0;
   private readonly keys = new Set<string>();
 
@@ -45,21 +43,31 @@ export class Game {
     options: GameOptions = {},
   ) {
     this.settings = resolveConfig({ seed: options.seed ?? 1 });
+    this.backend = new SimHost(this.settings, options.warmup ?? 0);
+    this.backend.setSpeed(SPEEDS[this.speedIndex]);
     this.renderer = new Renderer(canvas);
-    this.view = { camera: new Camera(1, 1), selectedId: null, paused: options.paused ?? false };
+    this.view = {
+      camera: new Camera(1, 1),
+      selectedId: null,
+      paused: options.paused ?? false,
+      mode: 'tile',
+      overlay: 'none',
+    };
+    this.backend.setPaused(this.view.paused);
     this.panel = new Panel(panelRoot, this.settings, {
       togglePause: () => this.setPaused(!this.view.paused),
       step: () => this.stepOnce(),
       changeSpeed: (d) => this.changeSpeed(d),
       newWorld: (seed) => this.newWorld(seed),
       applyLive: (control, value) => this.applyLive(control, value),
+      toggleGlyph: () => this.toggleGlyph(),
+      cycleOverlay: (d) => this.cycleOverlay(d),
     });
     this.panel.setPaused(this.view.paused);
     this.panel.setSpeed(SPEEDS[this.speedIndex]);
-    this.newWorld(this.settings.seed, options.warmup ?? 0);
-    if (options.select !== undefined && this.sim.creatures.some((c) => c.id === options.select)) {
-      this.view.selectedId = options.select;
-    }
+    this.panel.setView(this.view.mode, this.view.overlay);
+    this.resetView();
+    if (options.select !== undefined) this.select(options.select);
     this.fit();
   }
 
@@ -73,42 +81,62 @@ export class Game {
 
   newWorld(seed: number, warmup = 0): void {
     this.settings.seed = seed;
-    this.sim = new Simulation(this.settings);
-    for (let i = 0; i < warmup; i++) this.sim.step();
-    this.sim.onBirth = (c) => this.renderer.addBirth(c);
-    this.sim.onDeath = (c) => this.renderer.addDeath(c);
-    this.sim.onBite = (_, victim) => this.renderer.addHit(victim);
-    this.renderer.setWorld(this.sim.world);
-    const camera = new Camera(this.sim.world.width, this.sim.world.height);
-    camera.centerOn((this.sim.world.width * TILE) / 2, (this.sim.world.height * TILE) / 2);
+    this.backend.newWorld(this.settings, warmup);
+    this.resetView();
+    this.panel.setSeed(seed);
+  }
+
+  /** Point the camera and renderer at the backend's current world. */
+  private resetView(): void {
+    const { world } = this.backend;
+    this.renderer.setWorld(world);
+    const camera = new Camera(world.width, world.height);
+    camera.centerOn((world.width * TILE) / 2, (world.height * TILE) / 2);
     this.view.camera = camera;
     this.view.selectedId = null;
-    this.tickDebt = 0;
-    this.panel.setSeed(seed);
+    this.backend.select(null);
   }
 
   setPaused(paused: boolean): void {
     this.view.paused = paused;
+    this.backend.setPaused(paused);
     this.panel.setPaused(paused);
   }
 
   stepOnce(): void {
     this.setPaused(true);
-    this.sim.step();
+    this.backend.stepOnce();
   }
 
   changeSpeed(direction: 1 | -1): void {
     this.speedIndex = Math.min(SPEEDS.length - 1, Math.max(0, this.speedIndex + direction));
+    this.backend.setSpeed(SPEEDS[this.speedIndex]);
     this.panel.setSpeed(SPEEDS[this.speedIndex]);
+  }
+
+  toggleGlyph(): void {
+    this.view.mode = this.view.mode === 'tile' ? 'glyph' : 'tile';
+    this.panel.setView(this.view.mode, this.view.overlay);
+  }
+
+  cycleOverlay(direction: 1 | -1): void {
+    const i = OVERLAYS.indexOf(this.view.overlay);
+    this.view.overlay = OVERLAYS[(i + direction + OVERLAYS.length) % OVERLAYS.length];
+    this.panel.setView(this.view.mode, this.view.overlay);
   }
 
   /** A slider moved: change the rule in the running simulation too. */
   private applyLive(control: Control, value: number | boolean): void {
-    control.set(this.sim.config, value);
+    this.backend.setConfig(control.path, value);
+  }
+
+  select(id: number | null): void {
+    this.view.selectedId = id;
+    this.backend.select(id);
   }
 
   deselect(): void {
-    this.view.selectedId = null;
+    this.select(null);
   }
 
   /** A click on the canvas, in screen pixels (0-255, 0-223). */
@@ -117,10 +145,10 @@ export class Game {
       this.clickHud(sx, sy);
       return;
     }
-    const { camera } = this.view;
-    const [wx, wy] = camera.toWorld(sx, sy - HUD_H);
-    const hit = pickCreature(this.sim.creatures, this.sim.world, wx / TILE, wy / TILE, PICK_RADIUS);
-    this.view.selectedId = hit ? hit.id : null;
+    const { scene, world } = this.backend;
+    const [wx, wy] = this.view.camera.toWorld(sx, sy - HUD_H);
+    const hit = pickCreature(scene, world, wx / TILE, wy / TILE, PICK_RADIUS);
+    this.select(hit);
   }
 
   /** Clicking the minimap moves the camera there. */
@@ -128,8 +156,8 @@ export class Game {
     const x = sx - 8;
     const y = sy - 4;
     if (x < 0 || y < 0 || x >= MINIMAP_SIZE || y >= MINIMAP_SIZE) return;
-    const { world } = this.sim;
-    this.view.selectedId = null;
+    const { world } = this.backend;
+    this.deselect();
     this.view.camera.centerOn(
       (x / MINIMAP_SIZE) * world.width * TILE,
       (y / MINIMAP_SIZE) * world.height * TILE,
@@ -137,7 +165,7 @@ export class Game {
   }
 
   panBy(dx: number, dy: number): void {
-    this.view.selectedId = null;
+    this.deselect();
     this.view.camera.pan(dx, dy);
   }
 
@@ -166,32 +194,25 @@ export class Game {
     this.lastTime = time;
     this.scrollWithKeys();
 
-    if (!this.view.paused) {
-      this.tickDebt += (dt / (1000 / 60)) * SPEEDS[this.speedIndex];
-      const start = performance.now();
-      while (this.tickDebt >= 1) {
-        this.sim.step();
-        this.tickDebt -= 1;
-        if (performance.now() - start > TICK_BUDGET_MS) {
-          this.tickDebt = 0; // can't keep up: run slower rather than fall further behind
-          break;
-        }
-      }
-    }
+    this.backend.update(dt);
+    const { scene, detail, analysis, world } = this.backend;
 
+    // A followed creature that died is no longer followed.
+    if (this.view.selectedId !== null && detail === null) this.view.selectedId = null;
     this.followSelected();
-    this.renderer.render(this.sim, this.view);
+
+    this.renderer.render(scene, world, detail, analysis, this.view);
+    this.panel.setSpeed(SPEEDS[this.speedIndex], this.view.paused ? undefined : scene.tps);
+    this.panel.update({ scene, detail, analysis, view: this.view }, time);
   }
 
   private followSelected(): void {
     const { selectedId, camera } = this.view;
     if (selectedId === null) return;
-    const c = this.sim.creatures.find((creature) => creature.id === selectedId);
-    if (!c) {
-      this.view.selectedId = null; // it died
-      return;
-    }
-    camera.follow(c.x * TILE, c.y * TILE);
+    const { scene } = this.backend;
+    const i = scene.indexOfId(selectedId);
+    if (i < 0) return;
+    camera.follow(scene.x[i] * TILE, scene.y[i] * TILE);
   }
 
   private scrollWithKeys(): void {

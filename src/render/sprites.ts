@@ -1,5 +1,5 @@
 import * as art from './art';
-import { COLORS, HUE_COLUMN_COUNT, creatureColors, nes, type RGB } from './palette';
+import { COLORS, FOOD_HEAT, HUE_COLUMN_COUNT, creatureColors, nes, type RGB } from './palette';
 import { flipHorizontal, renderPattern, scaleUp, type PixelImage } from './pixel';
 
 /** A drawable sprite: the canvas holding it, ready for drawImage. */
@@ -99,14 +99,25 @@ export const puffImages = (): PixelImage[] =>
 function fillBackground(img: PixelImage, background: RGB): PixelImage {
   const data = new Uint8ClampedArray(img.data.length);
   for (let i = 0; i < data.length; i += 4) {
-    const opaque = img.data[i + 3] > 0;
-    const src = opaque ? img.data : null;
-    data[i] = src ? src[i] : background[0];
-    data[i + 1] = src ? src[i + 1] : background[1];
-    data[i + 2] = src ? src[i + 2] : background[2];
+    const keep = img.data[i + 3] > 0;
+    data[i] = keep ? img.data[i] : background[0];
+    data[i + 1] = keep ? img.data[i + 1] : background[1];
+    data[i + 2] = keep ? img.data[i + 2] : background[2];
     data[i + 3] = 255;
   }
   return { width: img.width, height: img.height, data };
+}
+
+/** A tile of one solid colour. */
+export function flatImage(color: RGB, size = 8): PixelImage {
+  const data = new Uint8ClampedArray(size * size * 4);
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = color[0];
+    data[i + 1] = color[1];
+    data[i + 2] = color[2];
+    data[i + 3] = 255;
+  }
+  return { width: size, height: size, data };
 }
 
 /** Pre-rendered sprites, built once in the browser. */
@@ -128,30 +139,35 @@ export class Atlas {
   readonly sparkle = sparkleImages().map(toCanvas);
   readonly puff = puffImages().map(toCanvas);
   readonly hit = hitImages().map(toCanvas);
+  /** Flat ground tiles for the food overlay, barren to lush. */
+  readonly heat = FOOD_HEAT.map((color) => toCanvas(flatImage(color)));
   private readonly creatureCache = new Map<number, Sprite>();
 
   /**
-   * A creature sprite. Hues are snapped to the palette, so there are only a few
+   * A creature sprite, coloured by palette column (1-12). There are only a few
    * dozen distinct sprites. Large creatures use the same art at double size.
    */
   creature(
-    hue: number,
+    column: number,
     frame: 0 | 1,
     facingLeft: boolean,
     large: boolean,
     predator = false,
   ): Sprite {
-    const column = Math.min(HUE_COLUMN_COUNT - 1, Math.floor(hue * HUE_COLUMN_COUNT));
     const key =
       (((column * 2 + frame) * 2 + (facingLeft ? 1 : 0)) * 2 + (large ? 1 : 0)) * 2 +
       (predator ? 1 : 0);
     let sprite = this.creatureCache.get(key);
     if (!sprite) {
-      // Use the middle of the hue bucket so the column matches `column`.
-      const img = creatureImage((column + 0.5) / HUE_COLUMN_COUNT, frame, facingLeft, predator);
+      const img = creatureImage(columnHue(column), frame, facingLeft, predator);
       sprite = toCanvas(large ? scaleUp(img, 2) : img);
       this.creatureCache.set(key, sprite);
     }
     return sprite;
   }
+}
+
+/** A hue in the middle of a palette column's bucket, so it maps back to that column. */
+function columnHue(column: number): number {
+  return (column - 1 + 0.5) / HUE_COLUMN_COUNT;
 }

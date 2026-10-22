@@ -64,3 +64,27 @@ export function creatureColors(hue: number): { body: RGB; shade: RGB } {
   const column = hueColumn(hue);
   return { body: nes(0x20 + column), shade: nes(0x10 + column) };
 }
+
+/** Palette columns running from "low" to "high", for colouring a 0-1 value. */
+export const RAMPS = {
+  /** Red (empty) through yellow to green (full). */
+  energy: [6, 7, 8, 9, 10],
+  /** Cyan (young) through blue and violet to red (old). */
+  age: [12, 1, 3, 4, 6],
+  /** Green (plants) through yellow to red (meat). */
+  diet: [10, 9, 8, 7, 6],
+} as const;
+
+/** The palette column for a value from 0 to 1 along a ramp. */
+export function rampColumn(ramp: readonly number[], t: number): number {
+  const i = Math.floor(Math.min(1, Math.max(0, t)) * ramp.length);
+  return ramp[Math.min(ramp.length - 1, i)];
+}
+
+/** A distinct-looking column for each species number. */
+export function speciesColumn(speciesId: number): number {
+  return 1 + ((Math.abs(speciesId) * 5) % HUE_COLUMN_COUNT);
+}
+
+/** Ground colours for the food overlay, barren to lush. */
+export const FOOD_HEAT: readonly RGB[] = [nes(0x07), nes(0x17), nes(0x27), nes(0x29), nes(0x1a)];

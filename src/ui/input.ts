@@ -62,6 +62,8 @@ export function attachInput(canvas: HTMLCanvasElement, game: Game): void {
     else if (e.key === '[') game.changeSpeed(-1);
     else if (e.key === ']') game.changeSpeed(1);
     else if (e.key === 'Escape') game.deselect();
+    else if (e.key === 'g') game.toggleGlyph();
+    else if (e.key === 'o') game.cycleOverlay(1);
   });
   window.addEventListener('keyup', (e) => game.keyUp(e.key));
   window.addEventListener('blur', () => PAN_KEYS.forEach((k) => game.keyUp(k)));

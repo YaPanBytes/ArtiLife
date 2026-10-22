@@ -1,4 +1,5 @@
 import type { SimConfig } from '../sim/config';
+import { getPath, setPath } from '../sim/config-path';
 
 /** A world rule the player can change from the panel. */
 export interface Control {
@@ -6,6 +7,8 @@ export interface Control {
   label: string;
   hint: string;
   kind: 'number' | 'toggle';
+  /** Where the rule lives in the config, e.g. 'food.regrowRate'. */
+  path: string;
   min?: number;
   max?: number;
   step?: number;
@@ -15,6 +18,12 @@ export interface Control {
   set(c: SimConfig, v: number | boolean): void;
 }
 
+const accessors = (path: string) => ({
+  path,
+  get: (c: SimConfig) => getPath(c, path) as number | boolean,
+  set: (c: SimConfig, v: number | boolean) => setPath(c, path, v),
+});
+
 const num = (
   group: string,
   label: string,
@@ -22,8 +31,7 @@ const num = (
   min: number,
   max: number,
   step: number,
-  get: (c: SimConfig) => number,
-  set: (c: SimConfig, v: number) => void,
+  path: string,
   needsReset = false,
 ): Control => ({
   group,
@@ -34,8 +42,15 @@ const num = (
   max,
   step,
   needsReset,
-  get,
-  set: set as Control['set'],
+  ...accessors(path),
+});
+
+const toggle = (group: string, label: string, hint: string, path: string): Control => ({
+  group,
+  label,
+  hint,
+  kind: 'toggle',
+  ...accessors(path),
 });
 
 export const CONTROLS: readonly Control[] = [
@@ -46,27 +61,15 @@ export const CONTROLS: readonly Control[] = [
     0,
     0.08,
     0.002,
-    (c) => c.food.regrowRate,
-    (c, v) => (c.food.regrowRate = v),
+    'food.regrowRate',
   ),
-  num(
+  num('FOOD', 'FOOD CAP', 'Plant energy a tile holds when full.', 1, 30, 1, 'food.maxPerTile'),
+  toggle(
     'FOOD',
-    'FOOD CAP',
-    'Plant energy a tile holds when full.',
-    1,
-    30,
-    1,
-    (c) => c.food.maxPerTile,
-    (c, v) => (c.food.maxPerTile = v),
+    'SEASONS',
+    'Regrowth swings up and down over a yearly cycle.',
+    'food.seasons.enabled',
   ),
-  {
-    group: 'FOOD',
-    label: 'SEASONS',
-    hint: 'Regrowth swings up and down over a yearly cycle.',
-    kind: 'toggle',
-    get: (c) => c.food.seasons.enabled,
-    set: (c, v) => (c.food.seasons.enabled = v as boolean),
-  },
   num(
     'FOOD',
     'SWING',
@@ -74,19 +77,9 @@ export const CONTROLS: readonly Control[] = [
     0,
     1,
     0.05,
-    (c) => c.food.seasons.amplitude,
-    (c, v) => (c.food.seasons.amplitude = v),
+    'food.seasons.amplitude',
   ),
-  num(
-    'FOOD',
-    'YEAR LEN',
-    'Ticks in one year.',
-    500,
-    20000,
-    500,
-    (c) => c.food.seasons.lengthTicks,
-    (c, v) => (c.food.seasons.lengthTicks = v),
-  ),
+  num('FOOD', 'YEAR LEN', 'Ticks in one year.', 500, 20000, 500, 'food.seasons.lengthTicks'),
 
   num(
     'COSTS',
@@ -95,8 +88,7 @@ export const CONTROLS: readonly Control[] = [
     0,
     0.2,
     0.005,
-    (c) => c.creatures.basalCost,
-    (c, v) => (c.creatures.basalCost = v),
+    'creatures.basalCost',
   ),
   num(
     'COSTS',
@@ -105,8 +97,7 @@ export const CONTROLS: readonly Control[] = [
     0,
     3,
     0.05,
-    (c) => c.creatures.moveCost,
-    (c, v) => (c.creatures.moveCost = v),
+    'creatures.moveCost',
   ),
   num(
     'COSTS',
@@ -115,8 +106,7 @@ export const CONTROLS: readonly Control[] = [
     0,
     0.02,
     0.0005,
-    (c) => c.creatures.senseCost,
-    (c, v) => (c.creatures.senseCost = v),
+    'creatures.senseCost',
   ),
   num(
     'COSTS',
@@ -125,20 +115,10 @@ export const CONTROLS: readonly Control[] = [
     0,
     4,
     0.1,
-    (c) => c.creatures.eatRate,
-    (c, v) => (c.creatures.eatRate = v),
+    'creatures.eatRate',
   ),
 
-  num(
-    'LIFE',
-    'BIRTH COST',
-    'Energy a parent pays to reproduce.',
-    10,
-    90,
-    1,
-    (c) => c.creatures.birthCost,
-    (c, v) => (c.creatures.birthCost = v),
-  ),
+  num('LIFE', 'BIRTH COST', 'Energy a parent pays to reproduce.', 10, 90, 1, 'creatures.birthCost'),
   num(
     'LIFE',
     'MAX AGE',
@@ -146,19 +126,9 @@ export const CONTROLS: readonly Control[] = [
     0,
     10000,
     100,
-    (c) => c.creatures.maxAge,
-    (c, v) => (c.creatures.maxAge = v),
+    'creatures.maxAge',
   ),
-  num(
-    'LIFE',
-    'MAX POP',
-    'No births at this population.',
-    0,
-    2000,
-    50,
-    (c) => c.creatures.maxPopulation,
-    (c, v) => (c.creatures.maxPopulation = v),
-  ),
+  num('LIFE', 'MAX POP', 'No births at this population.', 0, 2000, 50, 'creatures.maxPopulation'),
 
   num(
     'PREDATION',
@@ -167,8 +137,7 @@ export const CONTROLS: readonly Control[] = [
     0,
     30,
     1,
-    (c) => c.predation.biteDamage,
-    (c, v) => (c.predation.biteDamage = v),
+    'predation.biteDamage',
   ),
   num(
     'PREDATION',
@@ -177,8 +146,7 @@ export const CONTROLS: readonly Control[] = [
     0,
     1,
     0.05,
-    (c) => c.predation.biteCost,
-    (c, v) => (c.predation.biteCost = v),
+    'predation.biteCost',
   ),
   num(
     'PREDATION',
@@ -187,8 +155,7 @@ export const CONTROLS: readonly Control[] = [
     0,
     1,
     0.05,
-    (c) => c.predation.meatYield,
-    (c, v) => (c.predation.meatYield = v),
+    'predation.meatYield',
   ),
   num(
     'PREDATION',
@@ -197,8 +164,7 @@ export const CONTROLS: readonly Control[] = [
     0,
     1,
     0.05,
-    (c) => c.predation.dietTradeoff,
-    (c, v) => (c.predation.dietTradeoff = v),
+    'predation.dietTradeoff',
   ),
   num(
     'PREDATION',
@@ -207,8 +173,7 @@ export const CONTROLS: readonly Control[] = [
     0,
     1,
     0.05,
-    (c) => c.predation.weakBite,
-    (c, v) => (c.predation.weakBite = v),
+    'predation.weakBite',
   ),
   num(
     'EVOLUTION',
@@ -217,19 +182,9 @@ export const CONTROLS: readonly Control[] = [
     0,
     4,
     0.1,
-    (c) => c.mutation.rateMultiplier,
-    (c, v) => (c.mutation.rateMultiplier = v),
+    'mutation.rateMultiplier',
   ),
-  num(
-    'EVOLUTION',
-    'MUT SIZE',
-    'How big each gene change is.',
-    0,
-    0.5,
-    0.01,
-    (c) => c.mutation.magnitude,
-    (c, v) => (c.mutation.magnitude = v),
-  ),
+  num('EVOLUTION', 'MUT SIZE', 'How big each gene change is.', 0, 0.5, 0.01, 'mutation.magnitude'),
 
   num(
     'NEW WORLD',
@@ -238,8 +193,7 @@ export const CONTROLS: readonly Control[] = [
     0,
     0.5,
     0.01,
-    (c) => c.terrain.waterFraction,
-    (c, v) => (c.terrain.waterFraction = v),
+    'terrain.waterFraction',
     true,
   ),
   num(
@@ -249,8 +203,7 @@ export const CONTROLS: readonly Control[] = [
     0,
     0.4,
     0.01,
-    (c) => c.terrain.rockFraction,
-    (c, v) => (c.terrain.rockFraction = v),
+    'terrain.rockFraction',
     true,
   ),
   num(
@@ -260,8 +213,7 @@ export const CONTROLS: readonly Control[] = [
     0,
     1,
     0.05,
-    (c) => c.terrain.fertilityContrast,
-    (c, v) => (c.terrain.fertilityContrast = v),
+    'terrain.fertilityContrast',
     true,
   ),
   num(
@@ -271,8 +223,7 @@ export const CONTROLS: readonly Control[] = [
     1,
     400,
     1,
-    (c) => c.creatures.initialCount,
-    (c, v) => (c.creatures.initialCount = v),
+    'creatures.initialCount',
     true,
   ),
 ];

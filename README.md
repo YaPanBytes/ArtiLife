@@ -4,7 +4,7 @@ An artificial-life ecosystem. Creatures with small neural-net brains and heritab
 
 You change the rules of the world (food supply, metabolic cost, mutation rate, terrain, disasters) and watch what evolves: grazing herds, ambush predators, scavengers, parasites, boom-and-bust cycles, and strategies nobody designed.
 
-> **Status: early development.** Steps 1 to 5 of the [implementation plan](#implementation-plan) are done: the world and food field, creatures with genomes, neural-net brains, vision and movement, a full life cycle (eating, energy costs, death, reproduction, mutation), the NES-style pixel renderer with live controls, and predation with a diet gene. Populations sustain themselves, evolve, and (with the default rules) split into plant eaters and hunters. There is no inspector or charts yet (step 6). Sections marked _(planned)_ are targets, not features.
+> **Status: early development.** Steps 1 to 6 of the [implementation plan](#implementation-plan) are done: the world and food field, creatures with genomes, neural-net brains, vision and movement, a full life cycle (eating, energy costs, death, reproduction, mutation), the NES-style pixel renderer with live controls, predation with a diet gene, and analysis tools (inspector with a live brain graph, charts, a species tree, an event log, a glyph view and colour overlays). Populations sustain themselves, evolve, and (with the default rules) split into plant eaters and hunters. Sections marked _(planned)_ are targets, not features.
 
 ## Core idea
 
@@ -59,7 +59,9 @@ Each creature has:
 
 - Mutation: Gaussian noise on brain weights and traits. The mutation rate is itself a gene, so it can evolve.
 - Sexual reproduction (crossover between nearby mates) as an optional rule.
-- Species and lineages are _tracked_ by genome distance for analysis and display. They never influence the simulation.
+- **Species** are _tracked_ by genome distance for analysis and display; they never influence the simulation. All the first creatures share one species. A child stays in its parent's species until it has drifted further than a threshold from that species' founding genome; then it founds a new species, recorded as a branch of its parent's. Species counts depend a lot on the run (a handful to a couple of hundred in 20,000 ticks), and the threshold is a rule (`species.threshold`).
+- **History** of the population and trait averages is sampled as it runs. When the record fills it keeps every other sample and samples half as often, so a long run still fits.
+- **Events** are written to a log as they happen: population milestones and crashes, the first hunters, hunters dying out, generation milestones, season changes, a new species with a different diet, and notable extinctions.
 
 ### Determinism
 
@@ -110,31 +112,40 @@ ArtiLife looks like an 8-bit NES game, with the information density of Dwarf For
 
 - Click a creature to follow it (the camera tracks it and its brackets blink). Click empty ground or press `Esc` to let go.
 - Drag or use the arrow keys / `WASD` to scroll. Click the minimap to jump there.
-- `Space` pauses, `.` steps one tick, `[` and `]` change speed (x1 to x32).
+- `Space` pauses, `.` steps one tick, `[` and `]` change speed (x1 to x32; the panel shows the speed actually reached, in ticks per second). `G` switches between the tile view and the glyph view, `O` cycles the colouring.
 - The side panel has sliders for the world's rules, which change the running simulation immediately: plant regrowth and cap, seasons, the cost of living, moving and seeing, eating rate, the bite (power, cost, meat yield, diet trade-off, weak bite), birth cost, lifespan, population cap, and mutation rate and size. A "new world" group (water, rock, fertility, starting population) and a seed box apply when you press GO or RND.
-- Open the browser console and type `artilife` to reach the running game, e.g. `artilife.sim.creatures`.
+- Open the browser console and type `artilife` to reach the running game, e.g. `artilife.backend.sim.creatures`.
+
+**Views and tools**
+
+- **Glyph view:** a Dwarf Fortress-style view in the same palette: `~` water, `#` rock, `. , "` plants in three sizes, and a letter for each creature (`h` plant eater, `o` mixed feeder, `w` hunter, in capitals when big). The followed creature is highlighted.
+- **Colour overlays** (`O`, or the arrows in the panel): colour creatures by energy (red to green), age (cyan to red), diet (green to red) or species; or colour the ground by how much food it holds.
+- **Event ticker:** the biggest events (first hunters, a population crash, a new kind of species) scroll along the bottom of the playfield for a few seconds, like Dwarf Fortress announcements.
+- **Side panel tabs:** RULES (playback, view, sliders), STATS, INSPECT and LOG.
+- **STATS:** population over time (with the hunters' share in red), the average body and diet traits each scaled to their range, number of species alive, the diet distribution right now, and a **species tree** (time runs left to right; each species is a bar coloured by diet, grey once extinct, joined to the species it branched from).
+- **INSPECT:** for the followed creature: its parent, generation, age, energy, species and every trait, plus a live **brain graph**. Sensors are on the left, hidden neurons in the middle and actions on the right; red lines are positive connections and blue lines negative, and the ones carrying signal this tick are bright. Neuron colour shows its activation.
+- **LOG:** the event log, newest first.
 
 **Planned**
 
-- **Glyph mode:** toggle to a Dwarf Fortress-style ASCII view, with letters and symbols in colour on black, for dense data views.
-- **Overlays:** energy, age, lineage colour, diet and food density, drawn as palette-limited tints.
-- **Inspector:** the followed creature's genome and brain graph with live neuron activations.
-- **Dwarf Fortress-style event log** ("A predator lineage has appeared in the north."), plus population and trait charts and a lineage tree.
 - Save/load of runs, screenshots, and optional chiptune sound.
+- Sexual reproduction, terrain barriers, seasons' effects, disasters and creature signals (step 7).
 
 ## Tech
 
 - **TypeScript**, built with **Vite**.
 - **Simulation core** (`src/sim/`) has no DOM dependencies, so it also runs headless in Node for batch experiments and tests. It currently runs on the browser's main thread, which is fine at a few hundred creatures; moving it to a Web Worker is an option if populations get much bigger.
 - **Renderer** draws to a 256×224 Canvas 2D buffer and scales it up by integer factors (pixelated). Sprites and tiles are pixel patterns written as text in `src/render/art.ts`, coloured from the NES palette at start-up. WebGL is only needed if creature counts demand it.
-- **Tests** with Vitest, including determinism and energy-conservation checks. The pure rendering and UI logic (palette, sprite art, camera, HUD helpers, controls) is unit-tested; the canvas drawing and DOM wiring are checked by hand in a browser.
+- **Tests** with Vitest, including determinism and energy-conservation checks. The pure rendering and UI logic (palette, sprite art, camera, HUD helpers, controls, charts, species tree, brain graph) is unit-tested, with charts drawn onto an in-memory pixel buffer so the output can be asserted; the canvas drawing and DOM wiring are checked by hand in a browser.
+- **Runtime layer:** the renderer and panel never touch the simulation directly. They read a `Scene` (flat arrays of creature data), a `CreatureDetail` for the followed creature and an `Analysis` (history, species, events), all produced by `SimHost`. That keeps drawing independent of how the simulation is run.
 
 Layout:
 
 ```
 src/
-  sim/        # world, creatures, brain, genome, energy rules (no DOM)
-  render/     # palette, pixel art, camera, canvas renderer
+  sim/        # world, creatures, brain, genome, energy, species, history, events (no DOM)
+  runtime/    # SimHost: runs a sim and publishes flat Scene/Analysis snapshots (no DOM)
+  render/     # palette, pixel art, camera, canvas renderer, charts, brain view
   ui/         # control panel, input, styles
   cli/        # headless runner for experiments
   game.ts     # frame loop tying sim, renderer, panel and input together
@@ -149,7 +160,7 @@ tests/
 3. **Energy and life cycle** _(done)_: eating, metabolism, death, asexual reproduction, mutation. First evolving run.
 4. **Renderer and controls** _(done)_: pixel renderer (NES palette, tile map, creature sprites with walk frames), Zelda-style HUD with minimap, pause/speed, live parameter sliders.
 5. **Predation and diet** _(done)_: bite mechanic, diet gene, meat vs. plant efficiency. This is where predators can first appear.
-6. **Analysis tools**: inspector, brain viewer, charts, lineage tracking, event log, glyph (ASCII) mode.
+6. **Analysis tools** _(done)_: inspector, brain viewer, charts, lineage tracking, event log, glyph (ASCII) mode, colour overlays.
 7. **Richer worlds**: terrain, seasons, events, sexual reproduction, creature signals.
 8. **Polish**: save/load, shareable seeds, performance pass (worker, WebGL), presets such as "Lush Eden", "Dust Bowl" and "Ice Age".
 9. **Stretch**: NEAT-style brain topology evolution, recurrent brains, learning within a lifetime, multi-world islands with migration.

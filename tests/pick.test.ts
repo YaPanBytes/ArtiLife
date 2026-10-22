@@ -1,23 +1,35 @@
 import { describe, expect, it } from 'vitest';
+import { Scene } from '../src/runtime/types';
 import { pickCreature } from '../src/ui/pick';
-import { emptyWorld, makeCreature } from './helpers';
+
+const world = { width: 32, height: 32, terrain: new Uint8Array(32 * 32) };
+
+/** A scene with creatures at the given positions, with ids 10, 11, ... */
+function sceneAt(...positions: [number, number][]): Scene {
+  const scene = new Scene();
+  scene.ensureCapacity(positions.length);
+  scene.count = positions.length;
+  positions.forEach(([x, y], i) => {
+    scene.id[i] = 10 + i;
+    scene.x[i] = x;
+    scene.y[i] = y;
+  });
+  return scene;
+}
 
 describe('pickCreature', () => {
-  const { world } = emptyWorld();
-
   it('picks the nearest creature within the radius', () => {
-    const near = makeCreature(10, 10);
-    const far = makeCreature(12, 10);
-    expect(pickCreature([far, near], world, 10.5, 10, 1.5)).toBe(near);
+    const scene = sceneAt([12, 10], [10, 10]);
+    expect(pickCreature(scene, world, 10.5, 10, 1.5)).toBe(11);
   });
 
   it('returns null when nothing is close enough, or there are no creatures', () => {
-    expect(pickCreature([makeCreature(10, 10)], world, 20, 20, 1.5)).toBeNull();
-    expect(pickCreature([], world, 5, 5, 1.5)).toBeNull();
+    expect(pickCreature(sceneAt([10, 10]), world, 20, 20, 1.5)).toBeNull();
+    expect(pickCreature(sceneAt(), world, 5, 5, 1.5)).toBeNull();
   });
 
   it('picks across the map seam', () => {
-    const c = makeCreature(world.width - 0.5, 10);
-    expect(pickCreature([c], world, 0.5, 10, 1.5)).toBe(c);
+    const scene = sceneAt([world.width - 0.5, 10]);
+    expect(pickCreature(scene, world, 0.5, 10, 1.5)).toBe(10);
   });
 });

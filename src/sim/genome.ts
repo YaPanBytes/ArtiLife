@@ -43,6 +43,11 @@ export const WEIGHT_LIMIT = 4;
 /** Gene order. Each trait gene is stored normalised to [0, 1]. */
 export const TRAIT_ORDER = Object.keys(TRAIT_SPECS) as (keyof Traits)[];
 export const TRAIT_COUNT = TRAIT_ORDER.length;
+/** The smallest and largest real value a trait can take. */
+export function traitRange(name: keyof Traits): { min: number; max: number } {
+  return TRAIT_SPECS[name];
+}
+
 export const MAX_VISION_RANGE = TRAIT_SPECS.visionRange.max;
 
 /** A genome is a flat float array: trait genes first, then every brain weight. */
