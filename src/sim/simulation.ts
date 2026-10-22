@@ -85,6 +85,7 @@ export class Simulation {
   private readonly mateNear: number[] = [];
   /** Scratch space for sharing food: what each creature wants, and total demand per tile. */
   private wants = new Float64Array(0);
+  private tiles = new Int32Array(0);
   private readonly tileDemand: Float64Array;
 
   /**
@@ -249,16 +250,21 @@ export class Simulation {
   private eatPhase(): void {
     const { creatures, world, config, tileDemand } = this;
     const n = creatures.length;
-    if (this.wants.length < n) this.wants = new Float64Array(n * 2);
-    const { wants } = this;
-    for (let i = 0; i < n; i++) {
-      const c = creatures[i];
-      wants[i] = appetite(c, config);
-      tileDemand[world.tileIndex(c.x, c.y)] += wants[i];
+    if (this.wants.length < n) {
+      this.wants = new Float64Array(n * 2);
+      this.tiles = new Int32Array(n * 2);
     }
+    const { wants, tiles } = this;
     for (let i = 0; i < n; i++) {
       const c = creatures[i];
       const tile = world.tileIndex(c.x, c.y);
+      tiles[i] = tile;
+      wants[i] = appetite(c, config);
+      tileDemand[tile] += wants[i];
+    }
+    for (let i = 0; i < n; i++) {
+      const c = creatures[i];
+      const tile = tiles[i];
       const demand = tileDemand[tile];
       const share = demand <= world.food[tile] ? 1 : world.food[tile] / demand;
       const gained = wants[i] * share * plantEfficiency(c, config);
@@ -266,7 +272,7 @@ export class Simulation {
       c.reward += gained;
     }
     for (let i = 0; i < n; i++) {
-      const tile = world.tileIndex(creatures[i].x, creatures[i].y);
+      const tile = tiles[i];
       if (tileDemand[tile] === 0) continue;
       world.food[tile] = Math.max(0, world.food[tile] - tileDemand[tile]);
       tileDemand[tile] = 0;
@@ -290,34 +296,43 @@ export class Simulation {
   /** Let each brain adapt to what it just gained or lost, if learning is on. Then forget the reward. */
   private learnPhase(): void {
     const { rate, forgetting } = this.config.learning;
+    if (rate <= 0) {
+      for (const c of this.creatures) c.reward = 0;
+      return;
+    }
     for (const c of this.creatures) {
-      if (rate > 0) {
-        // Learn from how much better or worse than expected this tick went.
-        const surprise = c.reward - c.rewardBaseline;
-        c.brain.learn(clamp(surprise / REWARD_SCALE, -1, 1), rate, forgetting);
-        c.rewardBaseline += BASELINE_SPEED * surprise;
-      }
+      // Learn from how much better or worse than expected this tick went.
+      const surprise = c.reward - c.rewardBaseline;
+      c.brain.learn(clamp(surprise / REWARD_SCALE, -1, 1), rate, forgetting);
+      c.rewardBaseline += BASELINE_SPEED * surprise;
       c.reward = 0;
     }
   }
 
   private removeDead(): void {
     const { maxAge } = this.config.creatures;
-    const alive: Creature[] = [];
-    for (const c of this.creatures) {
-      const dying = c.energy <= 0 || (maxAge > 0 && c.age >= maxAge);
-      if (dying) this.species.remove(c, this.tick);
-      if (c.energy <= 0) {
+    const { creatures } = this;
+    let kept = 0;
+    for (let i = 0; i < creatures.length; i++) {
+      const c = creatures[i];
+      const starved = c.energy <= 0;
+      const old = maxAge > 0 && c.age >= maxAge;
+      if (!starved && !old) {
+        creatures[kept++] = c;
+        continue;
+      }
+      this.species.remove(c, this.tick);
+      if (starved) {
         const cause = c.hurt ? 'eaten' : 'starved';
         if (cause === 'eaten') this.stats.eaten++;
         else this.stats.starved++;
         this.onDeath?.(c, cause);
-      } else if (maxAge > 0 && c.age >= maxAge) {
+      } else {
         this.stats.diedOfAge++;
         this.onDeath?.(c, 'age');
-      } else alive.push(c);
+      }
     }
-    this.creatures = alive;
+    creatures.length = kept;
   }
 
   private reproducePhase(): void {

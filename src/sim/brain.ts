@@ -49,6 +49,9 @@ export function initBrainWeights(rng: Rng, weights: Float32Array, recurrent = fa
   if (recurrent) layer(WREC, HIDDEN_SIZE * HIDDEN_SIZE, HIDDEN_SIZE * 3);
 }
 
+/** Which inputs are non-zero in the current `think`: scratch space, never kept between calls. */
+const liveInputs = new Int32Array(INPUT_COUNT);
+
 /**
  * A small network (inputs -> tanh hidden -> tanh outputs) that reads its weights
  * straight from a genome view. With `recurrent` set, each hidden neuron also sees
@@ -84,10 +87,17 @@ export class Brain implements BrainLike {
     const { active: w, hidden, previous, recurrent } = this;
     this.outputs = outputs;
     if (recurrent) previous.set(hidden);
+    // Most senses read zero most of the time, and a zero adds nothing to a sum, so
+    // only the inputs that carry a signal are visited (in the same order, giving the same result).
+    let live = 0;
+    for (let i = 0; i < INPUT_COUNT; i++) if (inputs[i] !== 0) liveInputs[live++] = i;
     for (let h = 0; h < HIDDEN_SIZE; h++) {
       let sum = w[B1 + h];
       const row = W1 + h * INPUT_COUNT;
-      for (let i = 0; i < INPUT_COUNT; i++) sum += w[row + i] * inputs[i];
+      for (let n = 0; n < live; n++) {
+        const i = liveInputs[n];
+        sum += w[row + i] * inputs[i];
+      }
       if (recurrent) {
         const back = WREC + h * HIDDEN_SIZE;
         for (let j = 0; j < HIDDEN_SIZE; j++) sum += w[back + j] * previous[j];

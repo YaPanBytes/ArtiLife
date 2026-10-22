@@ -119,9 +119,13 @@ export class World {
 
   /** Index of the tile containing (x, y), wrapping around the map edges. */
   tileIndex(x: number, y: number): number {
-    const tx = ((Math.floor(x) % this.width) + this.width) % this.width;
-    const ty = ((Math.floor(y) % this.height) + this.height) % this.height;
-    return ty * this.width + tx;
+    const { width, height } = this;
+    let tx = Math.floor(x);
+    let ty = Math.floor(y);
+    // Inside the map already, which is nearly always, there is nothing to wrap.
+    if (tx < 0 || tx >= width) tx = ((tx % width) + width) % width;
+    if (ty < 0 || ty >= height) ty = ((ty % height) + height) % height;
+    return ty * width + tx;
   }
 
   /** Wrap a coordinate pair into [0, width) x [0, height). */

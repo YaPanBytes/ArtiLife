@@ -14,8 +14,8 @@ export class SpatialHash {
   private readonly cursor: Int32Array;
   private cellOfItem: Int32Array;
   private items: Int32Array;
-  private xs: ArrayLike<number> = [];
-  private ys: ArrayLike<number> = [];
+  private xs: ArrayLike<number> = new Float64Array(0);
+  private ys: ArrayLike<number> = new Float64Array(0);
 
   constructor(
     private readonly width: number,

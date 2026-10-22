@@ -64,9 +64,10 @@ export class Creature {
 
   /** Run the brain on the senses already written to `inputs`, and store the new memory. */
   think(): void {
-    this.inputs.set(this.memory, SENSE_INPUT_COUNT);
-    this.brain.think(this.inputs, this.outputs);
-    this.memory.set(this.outputs.subarray(OUT_MEMORY, OUT_MEMORY + MEMORY_SIZE));
-    this.signal = this.outputs[OUT_SIGNAL];
+    const { inputs, outputs, memory } = this;
+    for (let i = 0; i < MEMORY_SIZE; i++) inputs[SENSE_INPUT_COUNT + i] = memory[i];
+    this.brain.think(inputs, outputs);
+    for (let i = 0; i < MEMORY_SIZE; i++) memory[i] = outputs[OUT_MEMORY + i];
+    this.signal = outputs[OUT_SIGNAL];
   }
 }
