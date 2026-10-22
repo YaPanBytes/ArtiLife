@@ -143,10 +143,16 @@ export function drawDietHistogram(s: Surface, bins: readonly number[]): void {
 export function treeRows(species: readonly SpeciesInfo[], maxRows: number): SpeciesInfo[] {
   if (species.length <= maxRows)
     return [...species].sort((a, b) => a.bornTick - b.bornTick || a.id - b.id);
-  const root = species.filter((sp) => sp.parentId === null);
+  const bigger = (a: SpeciesInfo, b: SpeciesInfo) => b.peak - a.peak || a.id - b.id;
+  // Species with no parent are the founders, and migrants that fit no species they arrived among.
+  // There can be more of them than there are rows, so they are cut to the biggest as well.
+  const root = species
+    .filter((sp) => sp.parentId === null)
+    .sort(bigger)
+    .slice(0, maxRows);
   const rest = species
     .filter((sp) => sp.parentId !== null)
-    .sort((a, b) => b.peak - a.peak || a.id - b.id)
+    .sort(bigger)
     .slice(0, maxRows - root.length);
   return [...root, ...rest].sort((a, b) => a.bornTick - b.bornTick || a.id - b.id);
 }

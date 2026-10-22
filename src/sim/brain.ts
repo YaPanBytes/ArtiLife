@@ -1,5 +1,5 @@
 import type { BrainLike } from './brains';
-import { clamp } from './math';
+import { clamp, tanh } from './math';
 import type { Rng } from './rng';
 import { SENSE_INPUT_COUNT } from './senses';
 
@@ -102,13 +102,13 @@ export class Brain implements BrainLike {
         const back = WREC + h * HIDDEN_SIZE;
         for (let j = 0; j < HIDDEN_SIZE; j++) sum += w[back + j] * previous[j];
       }
-      hidden[h] = Math.tanh(sum);
+      hidden[h] = tanh(sum);
     }
     for (let o = 0; o < OUTPUT_COUNT; o++) {
       let sum = w[B2 + o];
       const row = W2 + o * HIDDEN_SIZE;
       for (let h = 0; h < HIDDEN_SIZE; h++) sum += w[row + h] * hidden[h];
-      outputs[o] = Math.tanh(sum);
+      outputs[o] = tanh(sum);
     }
   }
 

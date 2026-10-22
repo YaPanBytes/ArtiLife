@@ -188,6 +188,15 @@ describe('species tree', () => {
     expect(rows.map((s) => s.peak).filter((p) => p >= 15).length).toBe(5);
   });
 
+  it('never shows more rows than fit, even when there are more founders than that', () => {
+    // Migrants that fit no species here found ones with no parent, so roots can pile up.
+    const roots = Array.from({ length: 30 }, (_, i) => species(i + 1, null, i * 10, { peak: i }));
+    const rows = treeRows([...roots, species(99, 1, 500)], 8);
+    expect(rows).toHaveLength(8);
+    // The biggest ones are the ones kept.
+    expect(rows.every((s) => s.peak >= 22 || s.id === 99)).toBe(true);
+  });
+
   it('draws bars coloured by diet, grey once extinct, joined to their parent', () => {
     const s = new BufferSurface(CHART_WIDTH, CHART_HEIGHTS.tree);
     drawSpeciesTree(

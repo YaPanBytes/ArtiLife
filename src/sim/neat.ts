@@ -1,6 +1,6 @@
 import type { BrainLike } from './brains';
 import { INPUT_COUNT, LEARNED_OUTPUTS, OUTPUT_COUNT, WEIGHT_LIMIT } from './brain';
-import { clamp } from './math';
+import { clamp, tanh } from './math';
 import type { Rng } from './rng';
 
 /**
@@ -339,7 +339,7 @@ export class NeatBrain implements BrainLike {
     for (let i = 0; i < INPUT_COUNT; i++) values[i] = inputs[i];
     sums.fill(0);
     for (let k = 0; k < weights.length; k++) sums[targets[k]] += weights[k] * values[sources[k]];
-    for (let n = NEAT_FIRST_OUTPUT; n < values.length; n++) values[n] = Math.tanh(sums[n]);
+    for (let n = NEAT_FIRST_OUTPUT; n < values.length; n++) values[n] = tanh(sums[n]);
     for (let o = 0; o < OUTPUT_COUNT; o++) outputs[o] = values[NEAT_FIRST_OUTPUT + o];
   }
 
