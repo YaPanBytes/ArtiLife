@@ -49,12 +49,6 @@ export function attachInput(canvas: HTMLCanvasElement, game: Game): void {
     e.target instanceof HTMLInputElement &&
     e.target.type !== 'range' &&
     e.target.type !== 'checkbox';
-  /** Space already does something on a button, checkbox or list: don't pause as well. */
-  const activating = (e: KeyboardEvent) =>
-    e.target instanceof HTMLButtonElement ||
-    e.target instanceof HTMLSelectElement ||
-    (e.target instanceof HTMLInputElement && e.target.type === 'checkbox');
-
   window.addEventListener('keydown', (e) => {
     if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
     // Shift or caps lock would otherwise turn "a" into "A", which key-up would not match.
@@ -63,7 +57,6 @@ export function attachInput(canvas: HTMLCanvasElement, game: Game): void {
       game.keyDown(key);
       e.preventDefault();
     } else if (e.key === ' ') {
-      if (activating(e)) return;
       game.setPaused(!game.view.paused);
       e.preventDefault();
     } else if (e.key === '.') game.stepOnce();
@@ -74,9 +67,12 @@ export function attachInput(canvas: HTMLCanvasElement, game: Game): void {
     else if (e.key === 'g') game.toggleGlyph();
     else if (e.key === 'o') game.cycleOverlay(1);
   });
-  window.addEventListener('keyup', (e) =>
-    game.keyUp(e.key.length === 1 ? e.key.toLowerCase() : e.key),
-  );
+  window.addEventListener('keyup', (e) => {
+    // Space pauses wherever the focus is. Some browsers also press the focused button when the
+    // key comes up, which would do a second thing as well, so that is stopped.
+    if (e.key === ' ' && !typing(e)) e.preventDefault();
+    game.keyUp(e.key.length === 1 ? e.key.toLowerCase() : e.key);
+  });
   window.addEventListener('blur', () => PAN_KEYS.forEach((k) => game.keyUp(k)));
   window.addEventListener('resize', () => game.fit());
 }

@@ -41,6 +41,8 @@ export class SimHost implements Backend {
   analysis!: Analysis;
   paused = false;
   speed = 4;
+  /** True when the last `advance` ran out of time with ticks still owed: the machine can't keep up at this speed. */
+  behind = false;
   private selectedId: number | null = null;
   private tickDebt = 0;
   private pendingEffects: number[] = [];
@@ -172,6 +174,7 @@ export class SimHost implements Backend {
 
   /** Run as many ticks as the elapsed time and speed call for. Returns how many ran. */
   advance(dtMs: number): number {
+    this.behind = false;
     if (this.paused) return 0;
     // Don't try to make up more than a few frames' worth after a stall.
     this.tickDebt = Math.min(this.tickDebt + (dtMs / FRAME_MS) * this.speed, this.speed * 6);
@@ -183,6 +186,7 @@ export class SimHost implements Backend {
       ran++;
       if (performance.now() - start > TICK_BUDGET_MS) {
         this.tickDebt = 0; // can't keep up: run slower rather than fall further behind
+        this.behind = true;
         break;
       }
     }

@@ -92,20 +92,24 @@ export class WorkerRuntime {
     this.dirty = true;
   }
 
-  /** Run the simulation up to `now`, and send a frame if one is due. Call this often. */
-  pump(now: number): void {
+  /**
+   * Run the simulation up to `now`, and send a frame if one is due. Call this often.
+   * Returns true if it ran flat out and is still behind, so the caller should call again at once.
+   */
+  pump(now: number): boolean {
     const { host } = this;
-    if (!host) return;
+    if (!host) return false;
     const dt = Math.min(100, now - this.lastTime);
     this.lastTime = now;
     // If the page isn't drawing the frames it has (a background tab, say), wait
     // instead of simulating ahead of it.
-    if (this.inFlight >= MAX_IN_FLIGHT) return;
+    if (this.inFlight >= MAX_IN_FLIGHT) return false;
     host.run(dt);
+    const behind = host.behind;
 
     const interval = host.paused ? PAUSED_FRAME_MS : RUNNING_FRAME_MS;
     const due = now - this.lastSent >= interval;
-    if (!due || this.inFlight >= MAX_IN_FLIGHT || (host.paused && !this.dirty)) return;
+    if (!due || this.inFlight >= MAX_IN_FLIGHT || (host.paused && !this.dirty)) return behind;
     host.refresh(false, now);
     const analysis = host.analysis.version !== this.sentAnalysisVersion ? host.analysis : null;
     if (analysis) this.sentAnalysisVersion = analysis.version;
@@ -123,6 +127,7 @@ export class WorkerRuntime {
     this.lastSent = now;
     this.inFlight++;
     this.dirty = false;
+    return behind;
   }
 
   private announceWorld(id: number): void {

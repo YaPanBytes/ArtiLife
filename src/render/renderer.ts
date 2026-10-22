@@ -44,6 +44,14 @@ const TICKER_LINES = 2;
 /** Age that fills the age ramp when creatures never die of old age. */
 const DEFAULT_AGE_SCALE = 3000;
 
+/**
+ * What a tile of the painted map shows, so that it is only painted again when this changes:
+ * 0-3 is bare ground up to a bush, then the food overlay's levels, then the two water frames, then rock.
+ */
+const LOOK_HEAT = 10;
+const LOOK_WATER = 20;
+const LOOK_ROCK = 30;
+
 /** Plant stage thresholds, as a fraction of a full tile. */
 const STAGE_SPROUT = 0.12;
 const STAGE_TUFT = 0.4;
@@ -96,6 +104,9 @@ export class Renderer {
   private staleAnalysis: Analysis | null = null;
   private frame = 0;
   private minimap: Sprite | null = null;
+  /** The whole map painted once, and what each of its tiles currently shows (255: nothing yet). */
+  private terrainLayer: HTMLCanvasElement | null = null;
+  private terrainDrawn = new Uint8Array(0);
   private readonly dotColors = Array.from({ length: HUE_COLUMN_COUNT }, (_, i) =>
     css(creatureColors((i + 0.5) / HUE_COLUMN_COUNT).body),
   );
@@ -113,6 +124,7 @@ export class Renderer {
    */
   setWorld(world: WorldInfo, analysis: Analysis | null = null): void {
     this.minimap = this.buildMinimap(world);
+    this.terrainLayer = null;
     this.effects.length = 0;
     this.headlines.length = 0;
     // A world that has just been loaded already has a log; its old news is not breaking.
@@ -193,6 +205,11 @@ export class Renderer {
 
   // Playfield: tiles
 
+  /**
+   * The ground, water and plants. The whole map is kept painted on an off-screen canvas and only
+   * the tiles that have changed since (a plant growing, a ripple of water) are painted again;
+   * what is on screen is then a copy of the part of that canvas under the camera.
+   */
   private drawTerrain(
     scene: Scene,
     world: WorldInfo,
@@ -200,42 +217,75 @@ export class Renderer {
     camY: number,
     heat: boolean,
   ): void {
-    const { ctx, atlas } = this;
+    const layer = this.terrainLayerFor(world);
+    const lc = layer.getContext('2d')!;
+    const { atlas, terrainDrawn: drawn } = this;
     const px = Math.round(camX);
     const py = Math.round(camY);
     const tx0 = Math.floor(px / TILE);
     const ty0 = Math.floor(py / TILE);
-    const ox = px - tx0 * TILE;
-    const oy = py - ty0 * TILE;
     const cols = FIELD_W / TILE + 1;
     const rows = FIELD_H / TILE + 1;
     const water = this.frame >> 5;
+    // Only the tiles in view are brought up to date; the rest are painted when they scroll in.
     for (let r = 0; r < rows; r++) {
       const ty = (((ty0 + r) % world.height) + world.height) % world.height;
       for (let c = 0; c < cols; c++) {
         const tx = (((tx0 + c) % world.width) + world.width) % world.width;
         const i = ty * world.width + tx;
-        const x = c * TILE - ox;
-        const y = HUD_H + r * TILE - oy;
         const terrain = world.terrain[i];
-        if (terrain === Terrain.Water) {
-          ctx.drawImage(atlas.water[(water + tx + ty) & 1], x, y);
-        } else if (terrain === Terrain.Rock) {
-          ctx.drawImage(atlas.rock, x, y);
-        } else {
+        let look: number;
+        if (terrain === Terrain.Water) look = LOOK_WATER + ((water + tx + ty) & 1);
+        else if (terrain === Terrain.Rock) look = LOOK_ROCK;
+        else {
           const food = scene.food[i] / scene.maxFood;
-          if (heat) {
-            const level = Math.min(FOOD_HEAT.length - 1, Math.floor(food * FOOD_HEAT.length));
-            ctx.drawImage(atlas.heat[level], x, y);
-            continue;
-          }
-          ctx.drawImage(atlas.ground[((tx * 7 + ty * 13 + ((tx * ty) >> 2)) >>> 0) & 3], x, y);
-          if (food >= STAGE_SPROUT) {
-            const stage = food >= STAGE_BUSH ? 2 : food >= STAGE_TUFT ? 1 : 0;
-            ctx.drawImage(atlas.plants[stage], x, y);
-          }
+          if (heat)
+            look = LOOK_HEAT + Math.min(FOOD_HEAT.length - 1, Math.floor(food * FOOD_HEAT.length));
+          else
+            look = food >= STAGE_BUSH ? 3 : food >= STAGE_TUFT ? 2 : food >= STAGE_SPROUT ? 1 : 0;
         }
+        if (drawn[i] === look) continue;
+        drawn[i] = look;
+        const x = tx * TILE;
+        const y = ty * TILE;
+        if (terrain === Terrain.Water) lc.drawImage(atlas.water[look - LOOK_WATER], x, y);
+        else if (terrain === Terrain.Rock) lc.drawImage(atlas.rock, x, y);
+        else if (heat) lc.drawImage(atlas.heat[look - LOOK_HEAT], x, y);
+        else lc.drawImage(atlas.groundWithPlant(groundVariant(tx, ty), look), x, y);
       }
+    }
+    this.blitWrapped(layer, px, py);
+  }
+
+  /** The map's off-screen canvas, made (and every tile marked as unpainted) when the map changes. */
+  private terrainLayerFor(world: WorldInfo): HTMLCanvasElement {
+    let layer = this.terrainLayer;
+    if (!layer || layer.width !== world.width * TILE || layer.height !== world.height * TILE) {
+      layer = document.createElement('canvas');
+      layer.width = world.width * TILE;
+      layer.height = world.height * TILE;
+      layer.getContext('2d')!.imageSmoothingEnabled = false;
+      this.terrainLayer = layer;
+      this.terrainDrawn = new Uint8Array(world.width * world.height).fill(255);
+    }
+    return layer;
+  }
+
+  /** Copy the playfield-sized window of `layer` that starts at pixel (px, py) onto the screen, wrapping round the map. */
+  private blitWrapped(layer: HTMLCanvasElement, px: number, py: number): void {
+    const { ctx } = this;
+    const mapW = layer.width;
+    const mapH = layer.height;
+    for (let dy = 0; dy < FIELD_H;) {
+      const sy = (((py + dy) % mapH) + mapH) % mapH;
+      const h = Math.min(mapH - sy, FIELD_H - dy);
+      for (let dx = 0; dx < FIELD_W;) {
+        const sx = (((px + dx) % mapW) + mapW) % mapW;
+        const w = Math.min(mapW - sx, FIELD_W - dx);
+        ctx.drawImage(layer, sx, sy, w, h, dx, HUD_H + dy, w, h);
+        dx += w;
+      }
+      dy += h;
     }
   }
 
@@ -577,6 +627,11 @@ export class Renderer {
     ctx.fillStyle = css(color);
     ctx.fillText(str, x, y);
   }
+}
+
+/** Which of the ground tile variants a tile uses: a fixed scatter, so the field looks natural but never shimmers. */
+function groundVariant(tx: number, ty: number): number {
+  return ((tx * 7 + ty * 13 + ((tx * ty) >> 2)) >>> 0) & 3;
 }
 
 /** The letter for a creature in glyph mode: what it eats, in capitals when it's big. */

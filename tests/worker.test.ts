@@ -58,6 +58,22 @@ describe('worker runtime and backend', () => {
     expect(backend.analysis.species.length).toBeGreaterThan(0);
   });
 
+  it('asks to be pumped again at once only while it runs flat out and is still behind', async () => {
+    const { backend, runtime } = connect({ creatures: { initialCount: 500, startEnergy: 90 } });
+    await backend.ready;
+    // Far more ticks owed than fit in one burst of work.
+    backend.setSpeed(32);
+    expect(runtime.pump(100)).toBe(true);
+    backend.update(16);
+    // The same world at an easy pace keeps up with ease.
+    backend.setSpeed(1);
+    expect(runtime.pump(116)).toBe(false);
+    backend.update(16);
+    backend.setSpeed(32);
+    backend.setPaused(true);
+    expect(runtime.pump(232)).toBe(false);
+  });
+
   it('runs ticks in step with real time and the chosen speed', async () => {
     const { backend, runtime } = connect({ creatures: { initialCount: 5 } });
     await backend.ready;

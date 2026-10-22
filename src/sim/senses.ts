@@ -39,6 +39,9 @@ export function sense(
   const { inputs } = c;
   const { visionRange: range, visionFov: fov } = c.traits;
   const maxFood = config.food.maxPerTile;
+  // Multiplying by a reciprocal is cheaper than dividing, in a loop that runs for every tile of every ray.
+  const invRange = 1 / range;
+  const invMaxFood = 1 / maxFood;
   const { width, height, terrain, food } = world;
   const cx = c.x;
   const cy = c.y;
@@ -59,8 +62,8 @@ export function sense(
     for (let d = 1; d <= range; d++) {
       // The tile under the sample point, wrapping around the map. One correction
       // is enough unless the map is smaller than the vision range.
-      let tx = Math.floor(cx + cos * d);
-      let ty = Math.floor(cy + sin * d);
+      let tx = Math.floor(cx + cos * d) | 0;
+      let ty = Math.floor(cy + sin * d) | 0;
       if (tx < 0) tx += width;
       else if (tx >= width) tx -= width;
       if (ty < 0) ty += height;
@@ -68,12 +71,12 @@ export function sense(
       if (tx < 0 || tx >= width) tx = ((tx % width) + width) % width;
       if (ty < 0 || ty >= height) ty = ((ty % height) + height) % height;
       const i = ty * width + tx;
-      const nearness = 1 - d / range;
+      const nearness = 1 - d * invRange;
       if (terrain[i] !== Terrain.Ground) {
         inputs[slot + OBSTACLE] = nearness;
         break;
       }
-      const seen = (food[i] / maxFood) * nearness;
+      const seen = food[i] * invMaxFood * nearness;
       if (seen > bestFood) bestFood = seen;
     }
     inputs[slot + FOOD] = bestFood;
@@ -102,7 +105,7 @@ export function sense(
     const bearing = wrapAngle(Math.atan2(dy, dx) - c.heading);
     const k = Math.round((bearing / fov + 0.5) * (RAY_COUNT - 1));
     if (k < 0 || k >= RAY_COUNT) continue;
-    const nearness = 1 - dist / range;
+    const nearness = 1 - dist * invRange;
     const slot = k * RAY_CHANNELS;
     if (nearness > inputs[slot + CREATURE]) {
       inputs[slot + CREATURE] = nearness;

@@ -10,8 +10,12 @@ const scope = self as unknown as {
 const runtime = new WorkerRuntime((reply) => scope.postMessage(reply));
 scope.onmessage = (event) => runtime.handle(event.data);
 
+// Normally look again every few milliseconds. When the simulation is running flat out and
+// still behind, look again at once: a timer would leave it idle between bursts.
+const channel = new MessageChannel();
 const loop = () => {
-  runtime.pump(performance.now());
-  setTimeout(loop, 4);
+  if (runtime.pump(performance.now())) channel.port2.postMessage(null);
+  else setTimeout(loop, 4);
 };
+channel.port1.onmessage = loop;
 loop();

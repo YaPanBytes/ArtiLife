@@ -1,5 +1,6 @@
 import * as art from './art';
 import { COLORS, FOOD_HEAT, HUE_COLUMN_COUNT, creatureColors, nes, type RGB } from './palette';
+import { TILE } from './layout';
 import { flipHorizontal, renderPattern, scaleUp, type PixelImage } from './pixel';
 
 /** A drawable sprite: the canvas holding it, ready for drawImage. */
@@ -142,6 +143,23 @@ export class Atlas {
   /** Flat ground tiles for the food overlay, barren to lush. */
   readonly heat = FOOD_HEAT.map((color) => toCanvas(flatImage(color)));
   private readonly creatureCache = new Map<number, Sprite>();
+  private readonly plantedGround: Sprite[] = [];
+
+  /** A ground tile with a plant of the given stage (0: bare, 1-3: sprout, tuft, bush) already on it, so a tile is one draw. */
+  groundWithPlant(variant: number, stage: number): Sprite {
+    const key = variant * 4 + stage;
+    let sprite = this.plantedGround[key];
+    if (!sprite) {
+      sprite = document.createElement('canvas');
+      sprite.width = TILE;
+      sprite.height = TILE;
+      const ctx = sprite.getContext('2d')!;
+      ctx.drawImage(this.ground[variant], 0, 0);
+      if (stage > 0) ctx.drawImage(this.plants[stage - 1], 0, 0);
+      this.plantedGround[key] = sprite;
+    }
+    return sprite;
+  }
 
   /**
    * A creature sprite, coloured by palette column (1-12). There are only a few

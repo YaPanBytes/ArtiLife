@@ -5,7 +5,6 @@ import { attachInput } from '../src/ui/input';
 type Handler = (e: { key: string; target?: unknown; preventDefault?: () => void }) => void;
 
 class FakeButton {}
-class FakeSelect {}
 class FakeInput {
   constructor(public type: string) {}
 }
@@ -21,7 +20,6 @@ describe('keyboard input', () => {
     toggles = 0;
     vi.stubGlobal('HTMLInputElement', FakeInput);
     vi.stubGlobal('HTMLButtonElement', FakeButton);
-    vi.stubGlobal('HTMLSelectElement', FakeSelect);
     vi.stubGlobal('window', {
       addEventListener: (name: string, handler: Handler) => handlers.set(name, handler),
     });
@@ -51,14 +49,25 @@ describe('keyboard input', () => {
     expect(held.size).toBe(0);
   });
 
-  it('pauses on space, unless the key is already pressing a button, a list or a checkbox', () => {
+  it('pauses on space wherever the focus is, without also pressing a focused button', () => {
     press(' ');
     expect(toggles).toBe(1);
-    press(' ', new FakeButton());
-    press(' ', new FakeSelect());
-    press(' ', new FakeInput('checkbox'));
-    expect(toggles).toBe(1);
-    press(' ', new FakeInput('range'));
+    // A button the player clicked earlier still has the focus: space pauses, and the
+    // browser is told not to press the button as the key comes up.
+    const button = new FakeButton();
+    press(' ', button);
     expect(toggles).toBe(2);
+    let prevented = 0;
+    handlers.get('keyup')!({ key: ' ', target: button, preventDefault: () => prevented++ });
+    expect(prevented).toBe(1);
+    // Typing a seed is different: space belongs to the text box.
+    press(' ', new FakeInput('number'));
+    expect(toggles).toBe(2);
+    handlers.get('keyup')!({
+      key: ' ',
+      target: new FakeInput('number'),
+      preventDefault: () => prevented++,
+    });
+    expect(prevented).toBe(1);
   });
 });
