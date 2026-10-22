@@ -23,6 +23,14 @@ export interface HistoryData {
   version: number;
 }
 
+/** A history in plain numbers, for saving. */
+export interface HistoryState {
+  interval: number;
+  version: number;
+  ticks: number[];
+  series: Record<SeriesName, number[]>;
+}
+
 /** What `History.record` is given: one sample of each series. */
 export type Sample = Record<SeriesName, number>;
 
@@ -80,6 +88,30 @@ export class History {
       series: this.series,
       version: this.version,
     };
+  }
+
+  /** Everything needed to rebuild this history later. */
+  getState(): HistoryState {
+    return {
+      interval: this.interval,
+      version: this.version,
+      ticks: Array.from(this.ticks.subarray(0, this.length)),
+      series: Object.fromEntries(
+        HISTORY_SERIES.map((name) => [
+          name,
+          Array.from(this.series[name].subarray(0, this.length)),
+        ]),
+      ) as Record<SeriesName, number[]>,
+    };
+  }
+
+  setState(state: HistoryState): void {
+    this.interval = state.interval;
+    this.version = state.version;
+    this.length = Math.min(state.ticks.length, this.capacity);
+    this.ticks.set(state.ticks.slice(0, this.length));
+    for (const name of HISTORY_SERIES)
+      this.series[name].set(state.series[name].slice(0, this.length));
   }
 
   clear(): void {

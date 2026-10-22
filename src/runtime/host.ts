@@ -1,4 +1,5 @@
 import { setPath } from '../sim/config-path';
+import { loadFromJson, saveToJson } from '../sim/serialize';
 import { resolveConfig, type SimConfig } from '../sim/config';
 import { describeBrain } from '../sim/brain-graph';
 import { TRAIT_COUNT } from '../sim/genome';
@@ -47,17 +48,26 @@ export class SimHost implements Backend {
 
   constructor(settings: SimConfig = resolveConfig(), warmup = 0) {
     this.settings = settings;
-    this.newWorld(settings, warmup);
+    void this.newWorld(settings, warmup);
   }
 
-  newWorld(settings: SimConfig, warmup = 0): void {
+  readonly ready = Promise.resolve();
+
+  newWorld(settings: SimConfig, warmup = 0): Promise<void> {
+    const sim = new Simulation(settings);
+    for (let i = 0; i < warmup; i++) sim.step();
+    this.adopt(sim, settings);
+    return Promise.resolve();
+  }
+
+  /** Make `sim` the running world: hook up the effect reporting and reset everything that referred to the old one. */
+  private adopt(sim: Simulation, settings: SimConfig): void {
     this.settings = settings;
-    this.sim = new Simulation(settings);
-    for (let i = 0; i < warmup; i++) this.sim.step();
-    this.sim.onBirth = (c) => this.addEffect(EFFECT_BIRTH, c.x, c.y);
-    this.sim.onDeath = (c) => this.addEffect(EFFECT_DEATH, c.x, c.y);
-    this.sim.onBite = (_, victim) => this.addEffect(EFFECT_HIT, victim.x, victim.y);
-    const { world } = this.sim;
+    this.sim = sim;
+    sim.onBirth = (c) => this.addEffect(EFFECT_BIRTH, c.x, c.y);
+    sim.onDeath = (c) => this.addEffect(EFFECT_DEATH, c.x, c.y);
+    sim.onBite = (_, victim) => this.addEffect(EFFECT_HIT, victim.x, victim.y);
+    const { world } = sim;
     this.world = {
       width: world.width,
       height: world.height,
@@ -68,6 +78,20 @@ export class SimHost implements Backend {
     this.tickDebt = 0;
     this.scene.effects = [];
     this.refresh(true);
+  }
+
+  save(): Promise<string> {
+    return Promise.resolve(saveToJson(this.sim));
+  }
+
+  load(text: string): Promise<SimConfig> {
+    try {
+      const sim = loadFromJson(text);
+      this.adopt(sim, structuredClone(sim.config));
+      return Promise.resolve(structuredClone(sim.config));
+    } catch (error) {
+      return Promise.reject(error);
+    }
   }
 
   private addEffect(kind: number, x: number, y: number): void {
@@ -101,6 +125,12 @@ export class SimHost implements Backend {
   }
 
   update(dtMs: number): void {
+    this.run(dtMs);
+    this.refresh(false);
+  }
+
+  /** Advance the simulation for `dtMs` of real time and keep the speed reading up to date. */
+  run(dtMs: number): void {
     const ticks = this.advance(dtMs);
     this.tpsTicks += ticks;
     this.tpsMs += dtMs;
@@ -109,7 +139,6 @@ export class SimHost implements Backend {
       this.tpsTicks = 0;
       this.tpsMs = 0;
     }
-    this.refresh(false);
   }
 
   /** Run as many ticks as the elapsed time and speed call for. Returns how many ran. */

@@ -11,10 +11,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
-    "sim": "tsx src/cli/run.ts"
+    "sim": "tsx src/cli/run.ts",
+    "bench": "tsx src/cli/bench.ts",
+    "e2e": "node e2e/e2e.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "playwright-core": "^1.64.1",
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",

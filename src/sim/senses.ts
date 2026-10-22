@@ -39,6 +39,9 @@ export function sense(
   const { inputs } = c;
   const { visionRange: range, visionFov: fov } = c.traits;
   const maxFood = config.food.maxPerTile;
+  const { width, height, terrain, food } = world;
+  const cx = c.x;
+  const cy = c.y;
   inputs.fill(0, 0, SENSE_INPUT_COUNT);
 
   // Food and obstacles: march along each ray one tile at a time. Walls block the view.
@@ -48,25 +51,41 @@ export function sense(
     const sin = Math.sin(angle);
     const slot = k * RAY_CHANNELS;
     for (let d = 1; d <= range; d++) {
-      const i = world.tileIndex(c.x + cos * d, c.y + sin * d);
+      // The tile under the sample point, wrapping around the map. One correction
+      // is enough unless the map is smaller than the vision range.
+      let tx = Math.floor(cx + cos * d);
+      let ty = Math.floor(cy + sin * d);
+      if (tx < 0) tx += width;
+      else if (tx >= width) tx -= width;
+      if (ty < 0) ty += height;
+      else if (ty >= height) ty -= height;
+      if (tx < 0 || tx >= width) tx = ((tx % width) + width) % width;
+      if (ty < 0 || ty >= height) ty = ((ty % height) + height) % height;
+      const i = ty * width + tx;
       const nearness = 1 - d / range;
-      if (world.terrain[i] !== Terrain.Ground) {
+      if (terrain[i] !== Terrain.Ground) {
         inputs[slot + OBSTACLE] = nearness;
         break;
       }
-      const food = (world.food[i] / maxFood) * nearness;
-      if (food > inputs[slot + FOOD]) inputs[slot + FOOD] = food;
+      const seen = (food[i] / maxFood) * nearness;
+      if (seen > inputs[slot + FOOD]) inputs[slot + FOOD] = seen;
     }
   }
 
   // Creatures: each one is seen by the ray nearest its bearing, and the closest wins.
-  hash.query(c.x, c.y, range, scratch);
-  for (const index of scratch) {
-    const other = creatures[index];
+  hash.query(cx, cy, range, scratch);
+  const halfW = width * 0.5;
+  const halfH = height * 0.5;
+  for (let n = 0; n < scratch.length; n++) {
+    const other = creatures[scratch[n]];
     if (other === c) continue;
-    const dx = world.deltaX(c.x, other.x);
-    const dy = world.deltaY(c.y, other.y);
-    const dist = Math.hypot(dx, dy);
+    let dx = other.x - cx;
+    let dy = other.y - cy;
+    if (dx > halfW) dx -= width;
+    else if (dx < -halfW) dx += width;
+    if (dy > halfH) dy -= height;
+    else if (dy < -halfH) dy += height;
+    const dist = Math.sqrt(dx * dx + dy * dy);
     const bearing = wrapAngle(Math.atan2(dy, dx) - c.heading);
     const k = Math.round((bearing / fov + 0.5) * (RAY_COUNT - 1));
     if (k < 0 || k >= RAY_COUNT) continue;
@@ -84,6 +103,6 @@ export function sense(
   const self = RAY_COUNT * RAY_CHANNELS;
   inputs[self] = clamp(c.energy / config.creatures.maxEnergy, 0, 1);
   inputs[self + 1] = clamp(c.speed / c.traits.maxSpeed, 0, 1);
-  inputs[self + 2] = clamp(world.foodAt(c.x, c.y) / maxFood, 0, 1);
+  inputs[self + 2] = clamp(world.foodAt(cx, cy) / maxFood, 0, 1);
   inputs[self + 3] = c.hurt;
 }

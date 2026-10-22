@@ -9,8 +9,9 @@ export const enum Terrain {
 
 /** Tileable value noise in [0, 1]: wraps seamlessly, so the toroidal map has no seams. */
 function tileableNoise(width: number, height: number, scale: number, rng: Rng): Float32Array {
-  const gw = Math.max(1, Math.round(width / scale));
-  const gh = Math.max(1, Math.round(height / scale));
+  // At least two lattice points per axis, or a small map would get one flat value everywhere.
+  const gw = Math.max(2, Math.round(width / scale));
+  const gh = Math.max(2, Math.round(height / scale));
   const lattice = new Float32Array(gw * gh);
   for (let i = 0; i < lattice.length; i++) lattice[i] = rng.next();
 
@@ -32,13 +33,6 @@ function tileableNoise(width: number, height: number, scale: number, rng: Rng): 
     }
   }
   return out;
-}
-
-/** The value below which `fraction` of the samples fall. */
-function quantile(values: Float32Array, fraction: number): number {
-  const sorted = Float32Array.from(values).sort();
-  const index = Math.min(sorted.length - 1, Math.floor(fraction * sorted.length));
-  return sorted[index];
 }
 
 /**
@@ -72,16 +66,19 @@ export class World {
     const elevation = tileableNoise(width, height, scale, rng);
     const fertilityNoise = tileableNoise(width, height, scale, rng);
 
-    // Lowest tiles become water, highest become rock, so the fractions are exact.
-    const waterLevel = waterFraction > 0 ? quantile(elevation, waterFraction) : -1;
-    const rockLevel = rockFraction > 0 ? quantile(elevation, 1 - rockFraction) : 2;
+    // Lowest tiles become water, highest become rock. Going by rank rather than by
+    // a cut-off value keeps the fractions exact even when tiles tie.
+    const size = elevation.length;
+    const byElevation = Array.from({ length: size }, (_, i) => i).sort(
+      (a, b) => elevation[a] - elevation[b] || a - b,
+    );
+    this.terrain.fill(Terrain.Ground);
+    const waterCount = Math.floor(waterFraction * size);
+    const rockCount = size - Math.floor((1 - rockFraction) * size);
+    for (let k = 0; k < waterCount; k++) this.terrain[byElevation[k]] = Terrain.Water;
+    for (let k = size - rockCount; k < size; k++) this.terrain[byElevation[k]] = Terrain.Rock;
 
-    for (let i = 0; i < elevation.length; i++) {
-      const e = elevation[i];
-      if (waterFraction > 0 && e < waterLevel) this.terrain[i] = Terrain.Water;
-      else if (rockFraction > 0 && e >= rockLevel) this.terrain[i] = Terrain.Rock;
-      else this.terrain[i] = Terrain.Ground;
-
+    for (let i = 0; i < size; i++) {
       if (this.terrain[i] === Terrain.Ground) {
         this.fertility[i] = 1 - fertilityContrast + fertilityContrast * fertilityNoise[i];
         this.food[i] =

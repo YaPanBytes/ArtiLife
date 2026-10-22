@@ -33,6 +33,13 @@ export class EventLog {
     this.onEvent?.(event);
   }
 
+  /** Replace the log with saved events. */
+  restore(events: SimEvent[], version: number): void {
+    this.events.length = 0;
+    this.events.push(...events);
+    this.version = version;
+  }
+
   clear(): void {
     this.events.length = 0;
     this.version++;

@@ -1,9 +1,14 @@
+import { Chiptune } from './audio';
+import { findPreset } from './presets';
 import { Camera } from './render/camera';
 import { HUD_H, MINIMAP_SIZE, SCREEN_H, SCREEN_W, TILE } from './render/layout';
 import { Renderer } from './render/renderer';
 import { OVERLAYS, type ViewState } from './render/view';
 import { SimHost } from './runtime/host';
-import type { Backend } from './runtime/types';
+import { EFFECT_BIRTH, EFFECT_DEATH, EFFECT_HIT, type Backend } from './runtime/types';
+import { WorkerBackend, startWorker } from './runtime/worker-backend';
+import { captureCanvas, download, screenshotName } from './screenshot';
+import { shareUrl } from './share';
 import { resolveConfig, type SimConfig } from './sim/config';
 import type { Control } from './ui/controls';
 import { Panel } from './ui/panel';
@@ -15,35 +20,64 @@ const DEFAULT_SPEED = 2;
 const PAN_SPEED = 3;
 /** How close a click has to be to a creature to select it, in tiles. */
 const PICK_RADIUS = 1.5;
+/** Screenshots are enlarged by this whole number. */
+const SCREENSHOT_SCALE = 4;
 
 export interface GameOptions {
-  seed?: number;
+  /** Rules and seed to start with. */
+  settings?: SimConfig;
   /** Ticks to run before the first frame. */
   warmup?: number;
   paused?: boolean;
   /** Id of a creature to follow from the start. */
   select?: number;
+  /** Run the simulation in a worker (the default where workers exist). */
+  worker?: boolean;
 }
 
 /** Ties the simulation, renderer, panel and input together and runs the frame loop. */
 export class Game {
-  readonly backend: Backend;
   readonly view: ViewState;
   private readonly renderer: Renderer;
   private readonly panel: Panel;
-  /** The rules as the player has set them; used to build each new world. */
-  private readonly settings: SimConfig;
+  private readonly sound = new Chiptune();
   private speedIndex = DEFAULT_SPEED;
   private lastTime = 0;
+  private lastEventCount = 0;
   private readonly keys = new Set<string>();
 
-  constructor(
-    private readonly canvas: HTMLCanvasElement,
+  /** Start a game. Resolves once the first world exists. */
+  static async create(
+    canvas: HTMLCanvasElement,
     panelRoot: HTMLElement,
     options: GameOptions = {},
+  ): Promise<Game> {
+    const settings = options.settings ?? resolveConfig();
+    let backend: Backend | null = null;
+    if (options.worker !== false && typeof Worker !== 'undefined') {
+      try {
+        backend = new WorkerBackend(startWorker(), settings, options.warmup ?? 0);
+        await backend.ready;
+      } catch (error) {
+        console.warn('could not start the simulation worker, running on the page instead', error);
+        backend = null;
+      }
+    }
+    if (!backend) {
+      backend = new SimHost(settings, options.warmup ?? 0);
+      await backend.ready;
+    }
+    return new Game(canvas, panelRoot, backend, settings, options);
+  }
+
+  private constructor(
+    private readonly canvas: HTMLCanvasElement,
+    panelRoot: HTMLElement,
+    readonly backend: Backend,
+    /** The rules as the player has set them; used to build each new world. */
+    private readonly settings: SimConfig,
+    options: GameOptions,
   ) {
-    this.settings = resolveConfig({ seed: options.seed ?? 1 });
-    this.backend = new SimHost(this.settings, options.warmup ?? 0);
     this.backend.setSpeed(SPEEDS[this.speedIndex]);
     this.renderer = new Renderer(canvas);
     this.view = {
@@ -58,11 +92,17 @@ export class Game {
       togglePause: () => this.setPaused(!this.view.paused),
       step: () => this.stepOnce(),
       changeSpeed: (d) => this.changeSpeed(d),
-      newWorld: (seed) => this.newWorld(seed),
+      newWorld: (seed) => void this.newWorld(seed),
       applyLive: (control, value) => this.applyLive(control, value),
       trigger: (kind) => this.backend.trigger(kind),
       toggleGlyph: () => this.toggleGlyph(),
       cycleOverlay: (d) => this.cycleOverlay(d),
+      save: () => void this.save(),
+      loadFile: (file) => void this.loadFile(file),
+      screenshot: () => void this.screenshot(),
+      share: () => void this.share(),
+      applyPreset: (name) => void this.applyPreset(name),
+      setSound: (on) => this.setSound(on),
     });
     this.panel.setPaused(this.view.paused);
     this.panel.setSpeed(SPEEDS[this.speedIndex]);
@@ -80,9 +120,14 @@ export class Game {
     requestAnimationFrame(loop);
   }
 
-  newWorld(seed: number, warmup = 0): void {
+  /** Show a short message in the panel. */
+  notify(message: string): void {
+    this.panel.notify(message);
+  }
+
+  async newWorld(seed: number, warmup = 0): Promise<void> {
     this.settings.seed = seed;
-    this.backend.newWorld(this.settings, warmup);
+    await this.backend.newWorld(this.settings, warmup);
     this.resetView();
     this.panel.setSeed(seed);
   }
@@ -96,6 +141,17 @@ export class Game {
     this.view.camera = camera;
     this.view.selectedId = null;
     this.backend.select(null);
+    this.lastEventCount = this.backend.analysis.events.length;
+  }
+
+  /** Make the pending settings match `loaded`, keeping the same object so everything holding it sees the change. */
+  private adoptSettings(loaded: SimConfig): void {
+    const copy = structuredClone(loaded);
+    for (const key of Object.keys(copy) as (keyof SimConfig)[]) {
+      (this.settings as unknown as Record<string, unknown>)[key] = copy[key];
+    }
+    this.panel.syncFromSettings();
+    this.panel.setSeed(this.settings.seed);
   }
 
   setPaused(paused: boolean): void {
@@ -126,6 +182,15 @@ export class Game {
     this.panel.setView(this.view.mode, this.view.overlay);
   }
 
+  toggleSound(): void {
+    this.setSound(!this.sound.enabled);
+  }
+
+  setSound(on: boolean): void {
+    this.sound.enabled = on;
+    this.panel.setSoundOn(on);
+  }
+
   /** A slider moved: change the rule in the running simulation too. */
   private applyLive(control: Control, value: number | boolean | string): void {
     this.backend.setConfig(control.path, value);
@@ -140,6 +205,65 @@ export class Game {
     this.select(null);
   }
 
+  // Files, sharing and presets
+
+  /** Download the whole run as a file. */
+  async save(): Promise<void> {
+    try {
+      const text = await this.backend.save();
+      download(
+        text,
+        `artilife-seed${this.settings.seed}-tick${this.backend.scene.tick}.json`,
+        'application/json',
+      );
+      this.notify('RUN SAVED');
+    } catch (error) {
+      this.notify(`SAVE FAILED: ${(error as Error).message}`);
+    }
+  }
+
+  /** Replace the running world with a saved one. */
+  async loadFile(file: File): Promise<void> {
+    try {
+      const loaded = await this.backend.load(await file.text());
+      this.adoptSettings(loaded);
+      this.resetView();
+      this.setPaused(true);
+      this.notify('RUN LOADED (PAUSED)');
+    } catch (error) {
+      this.notify(`${(error as Error).message}`.toUpperCase());
+    }
+  }
+
+  async screenshot(): Promise<void> {
+    const blob = await captureCanvas(this.canvas, SCREENSHOT_SCALE);
+    download(blob, screenshotName(this.settings.seed, this.backend.scene.tick), 'image/png');
+    this.notify('SCREENSHOT SAVED');
+  }
+
+  /** Copy a link that starts a world with these rules and seed. */
+  async share(): Promise<void> {
+    const link = shareUrl(this.settings, window.location.href);
+    try {
+      await navigator.clipboard.writeText(link);
+      this.notify('LINK COPIED');
+    } catch {
+      window.prompt('Copy this link:', link);
+    }
+  }
+
+  /** Start a new world with a preset's rules (and the current seed). */
+  async applyPreset(name: string): Promise<void> {
+    const preset = findPreset(name);
+    if (!preset) return;
+    const config = resolveConfig({ ...preset.config, seed: this.settings.seed });
+    this.adoptSettings(config);
+    await this.newWorld(this.settings.seed);
+    this.notify(preset.blurb.toUpperCase());
+  }
+
+  // Input
+
   /** A click on the canvas, in screen pixels (0-255, 0-223). */
   click(sx: number, sy: number): void {
     if (sy < HUD_H) {
@@ -148,8 +272,7 @@ export class Game {
     }
     const { scene, world } = this.backend;
     const [wx, wy] = this.view.camera.toWorld(sx, sy - HUD_H);
-    const hit = pickCreature(scene, world, wx / TILE, wy / TILE, PICK_RADIUS);
-    this.select(hit);
+    this.select(pickCreature(scene, world, wx / TILE, wy / TILE, PICK_RADIUS));
   }
 
   /** Clicking the minimap moves the camera there. */
@@ -190,6 +313,8 @@ export class Game {
     this.canvas.style.height = `${SCREEN_H * scale}px`;
   }
 
+  // The frame loop
+
   private frame(time: number): void {
     const dt = this.lastTime === 0 ? 1000 / 60 : Math.min(100, time - this.lastTime);
     this.lastTime = time;
@@ -199,12 +324,33 @@ export class Game {
     const { scene, detail, analysis, world } = this.backend;
 
     // A followed creature that died is no longer followed.
-    if (this.view.selectedId !== null && detail === null) this.view.selectedId = null;
+    if (this.view.selectedId !== null && scene.indexOfId(this.view.selectedId) < 0) {
+      this.view.selectedId = null;
+    }
     this.followSelected();
+    this.playSounds(scene.effects, analysis.events.length);
 
     this.renderer.render(scene, world, detail, analysis, this.view);
     this.panel.setSpeed(SPEEDS[this.speedIndex], this.view.paused ? undefined : scene.tps);
     this.panel.update({ scene, detail, analysis, view: this.view }, time);
+  }
+
+  /** Sound for this frame's births, deaths and bites, and for any new headline. */
+  private playSounds(effects: readonly number[], eventCount: number): void {
+    if (!this.sound.enabled) {
+      this.lastEventCount = eventCount;
+      return;
+    }
+    let kinds = 0;
+    for (let i = 0; i < effects.length; i += 3) kinds |= 1 << effects[i];
+    if (kinds & (1 << EFFECT_BIRTH)) this.sound.play('birth');
+    if (kinds & (1 << EFFECT_DEATH)) this.sound.play('death');
+    if (kinds & (1 << EFFECT_HIT)) this.sound.play('hit');
+    if (eventCount > this.lastEventCount) {
+      const latest = this.backend.analysis.events[eventCount - 1];
+      if (latest?.major) this.sound.play(latest.kind === 'disaster' ? 'disaster' : 'event');
+    }
+    this.lastEventCount = eventCount;
   }
 
   private followSelected(): void {

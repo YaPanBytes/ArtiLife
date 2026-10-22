@@ -272,3 +272,17 @@ canvas#screen {
   padding: 3px;
   grid-column: 1 / -1;
 }
+
+#panel select.inline {
+  grid-column: auto;
+  flex: 1;
+  min-width: 0;
+}
+
+#panel .status {
+  min-height: 24px;
+  margin: 6px 0 0;
+  color: rgb(248, 184, 0);
+  font-size: 7px;
+  line-height: 1.6;
+}

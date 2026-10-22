@@ -1,5 +1,6 @@
 // Headless runner: steps a simulation and prints population and trait statistics.
-// Usage: npm run sim -- [--seed 1] [--ticks 20000] [--every 1000]
+// Usage: npm run sim -- [--seed 1] [--ticks 20000] [--every 1000] [--preset lush_eden] [--set path=value]
+import { findPreset } from '../presets';
 import { TRAIT_ORDER } from '../sim/genome';
 import { Simulation } from '../sim/simulation';
 
@@ -24,9 +25,32 @@ function overrides(): Record<string, unknown> {
 }
 
 const seed = arg('seed', 1);
+
+/** Preset first, then --set overrides on top. */
+function mergeOverrides(base: object, extra: object, seed: number): Record<string, unknown> {
+  const out: Record<string, unknown> = structuredClone(base) as Record<string, unknown>;
+  const merge = (target: Record<string, unknown>, source: Record<string, unknown>) => {
+    for (const [k, v] of Object.entries(source)) {
+      if (typeof v === 'object' && v !== null)
+        merge((target[k] ??= {}) as Record<string, unknown>, v as Record<string, unknown>);
+      else target[k] = v;
+    }
+  };
+  merge(out, extra as Record<string, unknown>);
+  out.seed = seed;
+  return out;
+}
 const ticks = arg('ticks', 20000);
 const every = arg('every', 1000);
-const sim = new Simulation({ ...overrides(), seed });
+const presetName = process.argv[process.argv.indexOf('--preset') + 1];
+const preset = process.argv.includes('--preset')
+  ? findPreset(presetName.replace(/_/g, ' ').toUpperCase())
+  : undefined;
+if (process.argv.includes('--preset') && !preset) {
+  console.error(`unknown preset "${presetName}"`);
+  process.exit(1);
+}
+const sim = new Simulation(mergeOverrides(preset?.config ?? {}, overrides(), seed));
 
 const traits = TRAIT_ORDER.filter((t) => t !== 'hue');
 console.log(

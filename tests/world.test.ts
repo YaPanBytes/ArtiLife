@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { resolveConfig } from '../src/sim/config';
 import { Rng } from '../src/sim/rng';
+import { Simulation } from '../src/sim/simulation';
 import { Terrain, World } from '../src/sim/world';
+
+const KNOWN_FINGERPRINT = 602306;
 
 const make = (overrides = {}) => {
   const config = resolveConfig(overrides);
@@ -113,5 +116,42 @@ describe('Food field', () => {
     expect(world.seasonFactor(100)).toBeCloseTo(1.5);
     expect(world.seasonFactor(300)).toBeCloseTo(0.5);
     expect(make().world.seasonFactor(100)).toBe(1);
+  });
+});
+
+describe('World generation on small maps', () => {
+  it('still makes a mix of terrain when the map is smaller than a terrain feature', () => {
+    for (const size of [4, 8, 12, 20, 31]) {
+      const { world, config } = make({
+        world: { width: size, height: size },
+        terrain: { waterFraction: 0.2, rockFraction: 0.1 },
+      });
+      const total = size * size;
+      const count = (t: Terrain) => world.terrain.filter((v) => v === t).length;
+      expect(count(Terrain.Water)).toBe(Math.floor(0.2 * total));
+      expect(count(Terrain.Rock)).toBe(total - Math.floor(0.9 * total));
+      expect(count(Terrain.Ground)).toBeGreaterThan(total / 2);
+      expect(config.world.width).toBe(size);
+    }
+  });
+
+  it('puts creatures on a small map', () => {
+    const sim = new Simulation({
+      seed: 2,
+      world: { width: 20, height: 20 },
+      creatures: { initialCount: 30 },
+    });
+    expect(sim.creatures).toHaveLength(30);
+    for (const c of sim.creatures) expect(sim.world.isWalkable(c.x, c.y)).toBe(true);
+  });
+
+  it('keeps the terrain of ordinary maps exactly as it was', () => {
+    // A fingerprint of the default world for seed 1, so a change to generation is noticed.
+    const { world } = make({ seed: 1 });
+    let hash = 0;
+    for (let i = 0; i < world.terrain.length; i++)
+      hash = (hash * 31 + world.terrain[i] * ((i % 7) + 1)) % 1000003;
+    expect(world.terrain.filter((t) => t === Terrain.Water).length).toBe(Math.floor(0.1 * 4096));
+    expect(hash).toBe(KNOWN_FINGERPRINT);
   });
 });

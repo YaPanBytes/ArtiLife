@@ -14,6 +14,7 @@ import type { Analysis, CreatureDetail, Scene } from '../runtime/types';
 import type { SimConfig } from '../sim/config';
 import { dietClass } from '../sim/species';
 import { DISASTER_INFO, DISASTER_KINDS, type DisasterKind } from '../sim/disasters';
+import { PRESETS } from '../presets';
 import { CONTROLS, decimalsFor, type Control } from './controls';
 
 export interface PanelActions {
@@ -27,6 +28,16 @@ export interface PanelActions {
   /** Make a disaster or introduction happen now. */
   trigger(kind: DisasterKind): void;
   toggleGlyph(): void;
+  /** Download the run as a file. */
+  save(): void;
+  /** Replace the run with a saved file. */
+  loadFile(file: File): void;
+  screenshot(): void;
+  /** Copy a link to this world's seed and rules. */
+  share(): void;
+  /** Start a new world with a preset's rules. */
+  applyPreset(name: string): void;
+  setSound(on: boolean): void;
   cycleOverlay(direction: 1 | -1): void;
 }
 
@@ -51,7 +62,11 @@ export class Panel {
   private readonly modeButton: HTMLButtonElement;
   private readonly overlayLabel: HTMLElement;
   private readonly seedInput: HTMLInputElement;
-  private readonly inputs = new Map<Control, HTMLInputElement>();
+  private readonly inputs = new Map<Control, HTMLInputElement | HTMLSelectElement>();
+  private soundBox!: HTMLInputElement;
+  private presetSelect!: HTMLSelectElement;
+  private statusLine!: HTMLElement;
+  private statusTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly values = new Map<Control, HTMLElement>();
   private readonly tabButtons = new Map<Tab, HTMLButtonElement>();
   private readonly tabBodies = new Map<Tab, HTMLElement>();
@@ -117,6 +132,56 @@ export class Panel {
     );
     view.append(viewRow);
     rules.append(view);
+
+    const file = el('section');
+    file.append(el('h2', 'FILE'));
+    const fileRow = el('div', '', 'wrap');
+    const picker = document.createElement('input');
+    picker.type = 'file';
+    picker.accept = '.json,application/json';
+    picker.hidden = true;
+    picker.addEventListener('change', () => {
+      const chosen = picker.files?.[0];
+      if (chosen) actions.loadFile(chosen);
+      picker.value = '';
+    });
+    const saveButton = button('SAVE', () => actions.save());
+    saveButton.title = 'Download this run as a file.';
+    const loadButton = button('LOAD', () => picker.click());
+    loadButton.title = 'Continue a run from a saved file.';
+    const photoButton = button('PHOTO', () => actions.screenshot());
+    photoButton.title = 'Save a picture of the screen.';
+    const shareButton = button('SHARE', () => actions.share());
+    shareButton.title = 'Copy a link that starts a world with this seed and these rules.';
+    fileRow.append(saveButton, loadButton, photoButton, shareButton, picker);
+    file.append(fileRow);
+
+    const presetRow = el('div', '', 'row');
+    this.presetSelect = document.createElement('select');
+    this.presetSelect.className = 'inline';
+    for (const preset of PRESETS) {
+      const o = document.createElement('option');
+      o.value = preset.name;
+      o.textContent = preset.name;
+      o.title = preset.blurb;
+      this.presetSelect.append(o);
+    }
+    presetRow.append(
+      this.presetSelect,
+      button('START', () => actions.applyPreset(this.presetSelect.value)),
+    );
+    file.append(presetRow);
+
+    const soundRow = el('label', '', 'control');
+    soundRow.title = 'Chiptune sound effects for births, deaths, bites and big events.';
+    this.soundBox = document.createElement('input');
+    this.soundBox.type = 'checkbox';
+    this.soundBox.addEventListener('change', () => actions.setSound(this.soundBox.checked));
+    soundRow.append(el('span', 'SOUND', 'name'), el('span', '', 'value'), this.soundBox);
+    file.append(soundRow);
+    this.statusLine = el('p', '', 'status');
+    file.append(this.statusLine);
+    rules.append(file);
 
     const groups = new Map<string, HTMLElement>();
     for (const control of CONTROLS) {
@@ -245,6 +310,7 @@ export class Panel {
       }
       select.value = String(control.get(this.settings));
       select.addEventListener('change', () => this.change(control, select.value));
+      this.inputs.set(control, select);
       row.append(name, value, select);
       this.showValue(control);
       return row;
@@ -290,6 +356,31 @@ export class Panel {
 
   setSpeed(multiplier: number, tps?: number): void {
     this.speedLabel.textContent = tps === undefined ? `X${multiplier}` : `X${multiplier} ${tps}/S`;
+  }
+
+  /** Show a short message, which fades after a few seconds. */
+  notify(message: string): void {
+    this.statusLine.textContent = message;
+    clearTimeout(this.statusTimer);
+    this.statusTimer = setTimeout(() => (this.statusLine.textContent = ''), 8000);
+  }
+
+  setSoundOn(on: boolean): void {
+    this.soundBox.checked = on;
+    this.soundBox.parentElement?.querySelector('.value')?.replaceChildren(on ? 'ON' : 'OFF');
+  }
+
+  /** Make every control show the pending settings, after they were replaced wholesale. */
+  syncFromSettings(): void {
+    for (const control of CONTROLS) {
+      const input = this.inputs.get(control);
+      if (!input) continue;
+      const v = control.get(this.settings);
+      if (input instanceof HTMLSelectElement) input.value = String(v);
+      else if (control.kind === 'toggle') input.checked = v as boolean;
+      else input.value = String(v);
+      this.showValue(control);
+    }
   }
 
   setSeed(seed: number): void {

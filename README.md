@@ -4,7 +4,7 @@ An artificial-life ecosystem. Creatures with small neural-net brains and heritab
 
 You change the rules of the world (food supply, metabolic cost, mutation rate, terrain, disasters) and watch what evolves: grazing herds, ambush predators, scavengers, parasites, boom-and-bust cycles, and strategies nobody designed.
 
-> **Status: early development.** Steps 1 to 7 of the [implementation plan](#implementation-plan) are done: the world and food field, creatures with genomes, neural-net brains, vision and movement, a full life cycle (eating, energy costs, death, reproduction, mutation), the NES-style pixel renderer with live controls, predation with a diet gene, and analysis tools (inspector with a live brain graph, charts, a species tree, an event log, a glyph view and colour overlays). Populations sustain themselves, evolve, and (with the default rules) split into plant eaters and hunters. Sections marked _(planned)_ are targets, not features.
+> **Status: early development.** Steps 1 to 8 of the [implementation plan](#implementation-plan) are done: the world and food field, creatures with genomes, neural-net brains, vision and movement, a full life cycle (eating, energy costs, death, reproduction, mutation), the NES-style pixel renderer with live controls, predation with a diet gene, and analysis tools (inspector with a live brain graph, charts, a species tree, an event log, a glyph view and colour overlays). Populations sustain themselves, evolve, and (with the default rules) split into plant eaters and hunters. Sections marked _(planned)_ are targets, not features.
 
 ## Core idea
 
@@ -125,6 +125,16 @@ ArtiLife looks like an 8-bit NES game, with the information density of Dwarf For
 - The side panel has sliders for the world's rules, which change the running simulation immediately: plant regrowth and cap, seasons, the cost of living, moving and seeing, eating rate, the bite (power, cost, meat yield, diet trade-off, weak bite), birth cost, lifespan, population cap, and mutation rate and size. A "new world" group (water, rock, fertility, starting population) and a seed box apply when you press GO or RND.
 - Open the browser console and type `artilife` to reach the running game, e.g. `artilife.backend.sim.creatures`.
 
+**Saving, sharing and presets** (the FILE section of the RULES tab)
+
+- **SAVE** downloads the whole run as a `.json` file, and **LOAD** continues from one. A loaded run carries on _exactly_ as the original would have (a test proves this with every feature switched on), including the species tree, the history, the log and any active drought. A file that isn't a valid save is refused with the reason, and the running world is left alone. Loading pauses the run.
+- **SHARE** copies a link that starts a world with your current seed and rules. The link holds only the settings that differ from the defaults, so it is short. Because the simulation is deterministic, the same link always gives the same world and, started from the beginning, the same run, provided nothing was changed or triggered along the way; it does not capture a run in progress (use SAVE for that).
+- **PHOTO** saves a picture of the screen, enlarged four times with no smoothing.
+- **Presets** start a new world with a named set of rules. Hover over a preset to read what to look for:
+  - **DEFAULT**, **LUSH EDEN** (plenty of food), **DUST BOWL** (barren soil with fertile patches), **ICE AGE** (long seasons with a harsh winter), **ISLAND CHAIN** (rivers cut the world into regions), **GARDEN** (biting does nothing: a world without hunting), **PREDATOR WORLD** (hunting pays so well that hunters boom and crash) and **MATING SEASON** (sexual reproduction with seasons).
+  - Each was run on at least one seed for 24,000 ticks and survived. The seed you have set is kept, and results differ by seed.
+- **SOUND** switches on optional chiptune effects for births, deaths, bites and big events (off by default).
+
 **Views and tools**
 
 - **Glyph view:** a Dwarf Fortress-style view in the same palette: `~` water, `#` rock, `. , "` plants in three sizes, and a letter for each creature (`h` plant eater, `o` mixed feeder, `w` hunter, in capitals when big). The followed creature is highlighted.
@@ -137,28 +147,38 @@ ArtiLife looks like an 8-bit NES game, with the information density of Dwarf For
 
 **Planned**
 
-- Save/load of runs, screenshots, and optional chiptune sound.
+- Stretch goals (step 9): brains whose structure evolves, recurrent brains, learning within a lifetime, and island worlds with migration.
 
 ## Tech
 
 - **TypeScript**, built with **Vite**.
-- **Simulation core** (`src/sim/`) has no DOM dependencies, so it also runs headless in Node for batch experiments and tests. It currently runs on the browser's main thread, which is fine at a few hundred creatures; moving it to a Web Worker is an option if populations get much bigger.
-- **Renderer** draws to a 256×224 Canvas 2D buffer and scales it up by integer factors (pixelated). Sprites and tiles are pixel patterns written as text in `src/render/art.ts`, coloured from the NES palette at start-up. WebGL is only needed if creature counts demand it.
-- **Tests** with Vitest, including determinism and energy-conservation checks. The pure rendering and UI logic (palette, sprite art, camera, HUD helpers, controls, charts, species tree, brain graph) is unit-tested, with charts drawn onto an in-memory pixel buffer so the output can be asserted; the canvas drawing and DOM wiring are checked by hand in a browser.
-- **Runtime layer:** the renderer and panel never touch the simulation directly. They read a `Scene` (flat arrays of creature data), a `CreatureDetail` for the followed creature and an `Analysis` (history, species, events), all produced by `SimHost`. That keeps drawing independent of how the simulation is run.
+- **Simulation core** (`src/sim/`) has no DOM dependencies, so it also runs headless in Node for batch experiments and tests.
+- **Web Worker:** in the browser the simulation runs in a worker (`src/runtime/worker*.ts`), so the page stays smooth however hard the simulation is working. The worker sends a frame at most every 1/60 s and waits until the page has drawn the ones it already sent, so it never races ahead of a page that isn't drawing (a background tab, say). Add `?worker=0` to the address to run everything on the page instead.
+- **Renderer** draws to a 256×224 Canvas 2D buffer and scales it up by integer factors (pixelated). Sprites and tiles are pixel patterns written as text in `src/render/art.ts`, coloured from the NES palette at start-up. I measured the page holding 60 frames per second with the simulation running flat out, so drawing is not the bottleneck and WebGL isn't needed.
+- **Tests** with Vitest, including determinism and energy-conservation checks. The pure rendering and UI logic (palette, sprite art, camera, HUD helpers, controls, charts, species tree, brain graph) is unit-tested, with charts drawn onto an in-memory pixel buffer so the output can be asserted. The worker is tested by joining the real worker code to the real proxy through a fake worker that structured-clones every message.
+- **End-to-end tests** (`npm run e2e`) drive the built page in Chromium with Playwright, in both worker and page modes: running, pausing, clicking, dragging, every panel tab, live rules, presets, share links, save and load, screenshots, sound, and that the console stays free of errors.
+- **Runtime layer:** the renderer and panel never touch the simulation directly. They read a `Scene` (flat arrays of creature data), a `CreatureDetail` for the followed creature and an `Analysis` (history, species, events), produced by `SimHost` (on the page or in the worker). That keeps drawing independent of how the simulation is run.
+
+### Speed
+
+At about 200 creatures the simulation costs roughly 5 microseconds per creature per tick (`npm run bench`), after an optimisation pass on the vision code and the spatial hash that cut it by about a third (from 7.5). In the browser that is about 690 ticks per second flat out, about x11 the normal rate, so x16 and x32 can't be reached with a big population. The panel shows the speed actually achieved next to the multiplier. A worker doesn't make one simulation faster; it keeps the page responsive. The remaining time is spread fairly evenly over vision, the spatial hash, the brain and bookkeeping, so much more would need a deeper restructuring of the data layout.
 
 Layout:
 
 ```
 src/
   sim/        # world, creatures, brain, genome, energy, species, history, events (no DOM)
-  runtime/    # SimHost: runs a sim and publishes flat Scene/Analysis snapshots (no DOM)
+  runtime/    # SimHost, the worker and its proxy: publish flat Scene/Analysis snapshots
+  presets.ts  # named sets of rules
+  share.ts    # share codes and links
+  audio.ts    # optional chiptune sound
   render/     # palette, pixel art, camera, canvas renderer, charts, brain view
   ui/         # control panel, input, styles
-  cli/        # headless runner for experiments
+  cli/        # headless runner and benchmark
   game.ts     # frame loop tying sim, renderer, panel and input together
   main.ts     # page entry point
 tests/
+e2e/          # browser tests
 ```
 
 ## Implementation plan
@@ -170,7 +190,7 @@ tests/
 5. **Predation and diet** _(done)_: bite mechanic, diet gene, meat vs. plant efficiency. This is where predators can first appear.
 6. **Analysis tools** _(done)_: inspector, brain viewer, charts, lineage tracking, event log, glyph (ASCII) mode, colour overlays.
 7. **Richer worlds** _(done)_: terrain barriers, seasonal cold, disasters, sexual reproduction, creature signals.
-8. **Polish**: save/load, shareable seeds, performance pass (worker, WebGL), presets such as "Lush Eden", "Dust Bowl" and "Ice Age".
+8. **Polish** _(done)_: save/load, shareable seeds, performance pass (profiled and optimised, Web Worker), presets, screenshots, optional sound.
 9. **Stretch**: NEAT-style brain topology evolution, recurrent brains, learning within a lifetime, multi-world islands with migration.
 
 ## Things to watch for
@@ -187,11 +207,13 @@ Requires Node 22+.
 npm install
 npm test          # run the unit tests
 npm run typecheck # type-check without emitting
-npm run dev       # start the dev server (currently shows a placeholder map view)
+npm run dev       # start the dev server
 npm run build     # type-check and build for production
+npm run bench     # time the simulation
+npm run e2e       # test the built page in a browser (after npm run build; needs Chromium)
 ```
 
-`npm run dev` opens the game. Click a creature to follow it, drag to scroll, and use the panel to change the world's rules while it runs (see [Controls](#visual-style)). You can also open it with `?seed=7` for a particular world, `?warmup=3000` to skip ahead 3000 ticks first, and `?paused=1`.
+`npm run dev` opens the game. Click a creature to follow it, drag to scroll, and use the panel to change the world's rules while it runs (see [Controls](#visual-style)). You can also open it with `?seed=7` for a particular world, `?warmup=3000` to skip ahead 3000 ticks first, `?paused=1`, and `?worker=0` to run the simulation on the page.
 
 To watch evolution as numbers, run the headless simulator:
 
@@ -199,7 +221,7 @@ To watch evolution as numbers, run the headless simulator:
 npm run sim -- --seed 1 --ticks 20000 --every 1000
 ```
 
-It prints one row every N ticks: population, births, deaths by starvation, by being eaten and by old age, bites landed, the share of carnivores, mean generation and energy, and the mean of each trait. Change any rule with `--set`, for example `--set predation.biteCost=0.3 --set food.regrowRate=0.03`.
+It prints one row every N ticks: population, births, deaths by starvation, by being eaten and by old age, bites landed, the share of carnivores, mean generation and energy, and the mean of each trait. Change any rule with `--set`, for example `--set predation.biteCost=0.3 --set food.regrowRate=0.03`, or start from a preset with `--preset ice_age`.
 
 ## License
 

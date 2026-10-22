@@ -45,6 +45,13 @@ interface Tracked extends SpeciesInfo {
   ref: Float32Array;
 }
 
+/** The species table in plain data, for saving. `ref` is an index into the saver's genome table. */
+export interface SpeciesState {
+  nextId: number;
+  version: number;
+  species: (SpeciesInfo & { ref: number })[];
+}
+
 /** What a creature needs to carry so the tracker can follow it. */
 export interface Classifiable {
   genome: Float32Array;
@@ -146,6 +153,23 @@ export class SpeciesTracker {
       this.onExtinction?.(species);
     }
     this.version++;
+  }
+
+  /** Species in plain data. `refOf` turns a reference genome into a key the caller can look up later. */
+  getState(refOf: (ref: Float32Array) => number): SpeciesState {
+    return {
+      nextId: this.nextId,
+      version: this.version,
+      species: [...this.species.values()].map(({ ref, ...info }) => ({ ...info, ref: refOf(ref) })),
+    };
+  }
+
+  setState(state: SpeciesState, refAt: (index: number) => Float32Array): void {
+    this.species.clear();
+    this.nextId = state.nextId;
+    this.version = state.version;
+    for (const { ref, ...info } of state.species)
+      this.species.set(info.id, { ...info, ref: refAt(ref) });
   }
 
   get(id: number): SpeciesInfo | undefined {

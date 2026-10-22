@@ -36,7 +36,7 @@ export class Scene {
   /** Measured simulation speed, in ticks per second. */
   tps = 0;
   stats: SimStats = { births: 0, starved: 0, eaten: 0, disaster: 0, bites: 0, diedOfAge: 0 };
-  food = new Float32Array(0);
+  food: Float32Array = new Float32Array(0);
   /** Births, deaths and bites since the last frame, as flat [kind, x, y] triples. */
   effects: number[] = [];
 
@@ -74,11 +74,99 @@ export class Scene {
     this.signal = new Float32Array(capacity);
   }
 
+  /** A copy of this scene with the creature arrays cut to length, for sending to another thread. */
+  toFrame(): SceneFrame {
+    const n = this.count;
+    return {
+      tick: this.tick,
+      count: n,
+      maxFood: this.maxFood,
+      maxEnergy: this.maxEnergy,
+      maxAge: this.maxAge,
+      season: this.season,
+      hazards: this.hazards,
+      tps: this.tps,
+      stats: { ...this.stats },
+      food: this.food.slice(),
+      effects: this.effects,
+      id: this.id.slice(0, n),
+      age: this.age.slice(0, n),
+      generation: this.generation.slice(0, n),
+      species: this.species.slice(0, n),
+      x: this.x.slice(0, n),
+      y: this.y.slice(0, n),
+      heading: this.heading.slice(0, n),
+      speed: this.speed.slice(0, n),
+      energy: this.energy.slice(0, n),
+      hue: this.hue.slice(0, n),
+      size: this.size.slice(0, n),
+      diet: this.diet.slice(0, n),
+      signal: this.signal.slice(0, n),
+    };
+  }
+
+  /** Take on the contents of a frame sent from another thread. */
+  applyFrame(frame: SceneFrame): void {
+    this.ensureCapacity(frame.count);
+    this.count = frame.count;
+    this.tick = frame.tick;
+    this.maxFood = frame.maxFood;
+    this.maxEnergy = frame.maxEnergy;
+    this.maxAge = frame.maxAge;
+    this.season = frame.season;
+    this.hazards = frame.hazards;
+    this.tps = frame.tps;
+    this.stats = frame.stats;
+    this.food = frame.food;
+    this.effects = frame.effects;
+    this.id.set(frame.id);
+    this.age.set(frame.age);
+    this.generation.set(frame.generation);
+    this.species.set(frame.species);
+    this.x.set(frame.x);
+    this.y.set(frame.y);
+    this.heading.set(frame.heading);
+    this.speed.set(frame.speed);
+    this.energy.set(frame.energy);
+    this.hue.set(frame.hue);
+    this.size.set(frame.size);
+    this.diet.set(frame.diet);
+    this.signal.set(frame.signal);
+  }
+
   /** Position in the arrays of the creature with this id, or -1. */
   indexOfId(id: number): number {
     for (let i = 0; i < this.count; i++) if (this.id[i] === id) return i;
     return -1;
   }
+}
+
+/** A scene's contents with the creature arrays exactly `count` long: the form that crosses to a worker. */
+export interface SceneFrame {
+  tick: number;
+  count: number;
+  maxFood: number;
+  maxEnergy: number;
+  maxAge: number;
+  season: SeasonInfo | null;
+  hazards: string[];
+  tps: number;
+  stats: SimStats;
+  food: Float32Array;
+  effects: number[];
+  id: Int32Array;
+  age: Int32Array;
+  generation: Int32Array;
+  species: Int32Array;
+  x: Float32Array;
+  y: Float32Array;
+  heading: Float32Array;
+  speed: Float32Array;
+  energy: Float32Array;
+  hue: Float32Array;
+  size: Float32Array;
+  diet: Float32Array;
+  signal: Float32Array;
 }
 
 /** One creature in detail, for the inspector. */
@@ -114,9 +202,13 @@ export interface Backend {
   readonly paused: boolean;
   /** Ticks per 1/60 s, as chosen by the player. */
   readonly speed: number;
+  /** The rules of the world now running. */
   readonly settings: SimConfig;
+  /** Resolves once the first world exists and `world`, `scene` and `analysis` can be read. */
+  readonly ready: Promise<void>;
 
-  newWorld(settings: SimConfig, warmup?: number): void;
+  /** Start a fresh world. Resolves once it exists. */
+  newWorld(settings: SimConfig, warmup?: number): Promise<void>;
   /** Make something happen: a drought, a plague, newcomers. */
   trigger(kind: DisasterKind): void;
   setPaused(paused: boolean): void;
@@ -125,6 +217,10 @@ export interface Backend {
   /** Change a rule in the running world. */
   setConfig(path: string, value: number | boolean | string): void;
   select(id: number | null): void;
+  /** The whole run as a JSON string. */
+  save(): Promise<string>;
+  /** Replace the run with a saved one. Resolves with its settings; rejects with the reason if it is not a valid save. */
+  load(text: string): Promise<SimConfig>;
   /** Run for `dtMs` of real time, then bring `scene`, `detail` and `analysis` up to date. */
   update(dtMs: number): void;
 }

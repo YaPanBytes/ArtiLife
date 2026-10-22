@@ -15,6 +15,18 @@ const NOTABLE_PEAK = 15;
 /** At most one new-species announcement per this many ticks. */
 export const SPECIATION_ANNOUNCE_GAP = 1000;
 
+/** What the chronicler remembers, so a saved run carries on without repeating announcements. */
+export interface ChronicleState {
+  populationMilestone: number;
+  generationMilestone: number;
+  recentPeak: number;
+  crashed: boolean;
+  extinct: boolean;
+  huntersSeen: boolean;
+  huntersAlive: boolean;
+  season: string | null;
+}
+
 /** Watches a simulation and writes the noteworthy moments to its event log. */
 export class Chronicler {
   private populationMilestone = 0;
@@ -25,6 +37,23 @@ export class Chronicler {
   private huntersSeen = false;
   private huntersAlive = false;
   private season: string | null = null;
+
+  getState(): ChronicleState {
+    return {
+      populationMilestone: this.populationMilestone,
+      generationMilestone: this.generationMilestone,
+      recentPeak: this.recentPeak,
+      crashed: this.crashed,
+      extinct: this.extinct,
+      huntersSeen: this.huntersSeen,
+      huntersAlive: this.huntersAlive,
+      season: this.season,
+    };
+  }
+
+  setState(s: ChronicleState): void {
+    Object.assign(this, s);
+  }
 
   update(sim: Simulation): void {
     const { tick, events, creatures } = sim;
