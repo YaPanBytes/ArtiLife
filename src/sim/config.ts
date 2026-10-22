@@ -46,6 +46,34 @@ export interface SimConfig {
     /** Energy burned per tick by signalling, times how strongly it signals. */
     signalCost: number;
   };
+  brain: {
+    /**
+     * The kind of brain: 'mlp' (a fixed feed-forward network), 'recurrent' (the
+     * same with its hidden neurons feeding back on themselves) or 'neat' (a network
+     * whose connections and neurons are added by mutation).
+     */
+    type: string;
+    /** NEAT: chance per birth of adding a new connection. Scaled by the mutation rate multiplier. */
+    addConnectionRate: number;
+    /** NEAT: chance per birth of splitting a connection with a new neuron. Scaled likewise. */
+    addNodeRate: number;
+    /** Energy burned per tick for each connection in the brain, so bigger brains must pay for themselves. */
+    connectionCost: number;
+  };
+  learning: {
+    /** How strongly a creature's brain adapts during its life (0 = it doesn't). Changes are not inherited. */
+    rate: number;
+    /** How fast learned changes fade back to the inherited brain, per tick (0-1). */
+    forgetting: number;
+  };
+  islands: {
+    /** Separate worlds, each with its own map and population. 1 means a single world. */
+    count: number;
+    /** Ticks between migrations. */
+    interval: number;
+    /** Creatures that leave each island at every migration, for the next island round the ring. */
+    migrants: number;
+  };
   predation: {
     /** How far a creature can reach with a bite, in tiles. */
     biteRange: number;
@@ -137,6 +165,9 @@ export const DEFAULT_CONFIG: SimConfig = {
     mateCompatibility: 0.35,
     signalCost: 0.005,
   },
+  brain: { type: 'mlp', addConnectionRate: 0.08, addNodeRate: 0.04, connectionCost: 0 },
+  learning: { rate: 0, forgetting: 0.002 },
+  islands: { count: 1, interval: 300, migrants: 2 },
   predation: {
     biteRange: 1.2,
     biteArc: 0.9,
@@ -192,6 +223,7 @@ function check(ok: boolean, message: string): void {
 }
 
 export const BARRIERS: readonly string[] = ['none', 'river', 'wall'];
+export const BRAIN_TYPES: readonly string[] = ['mlp', 'recurrent', 'neat'];
 
 const isFraction = (n: number) => Number.isFinite(n) && n >= 0 && n <= 1;
 const isPositiveInt = (n: number) => Number.isInteger(n) && n > 0;
@@ -243,6 +275,24 @@ export function resolveConfig(overrides: DeepPartial<SimConfig> = {}): SimConfig
   check(isFraction(c.predation.dietTradeoff), 'predation.dietTradeoff: must be between 0 and 1');
   check(c.predation.biteCost >= 0, 'predation.biteCost: must not be negative');
   check(isFraction(c.predation.meatYield), 'predation.meatYield: must be between 0 and 1');
+  check(BRAIN_TYPES.includes(c.brain.type), `brain.type: must be one of ${BRAIN_TYPES.join(', ')}`);
+  check(isFraction(c.brain.addConnectionRate), 'brain.addConnectionRate: must be between 0 and 1');
+  check(isFraction(c.brain.addNodeRate), 'brain.addNodeRate: must be between 0 and 1');
+  check(c.brain.connectionCost >= 0, 'brain.connectionCost: must not be negative');
+  check(c.learning.rate >= 0, 'learning.rate: must not be negative');
+  check(isFraction(c.learning.forgetting), 'learning.forgetting: must be between 0 and 1');
+  check(
+    Number.isInteger(c.islands.count) && c.islands.count >= 1 && c.islands.count <= 6,
+    'islands.count: must be a whole number from 1 to 6',
+  );
+  check(
+    Number.isInteger(c.islands.interval) && c.islands.interval >= 1,
+    'islands.interval: must be a positive whole number',
+  );
+  check(
+    Number.isInteger(c.islands.migrants) && c.islands.migrants >= 0,
+    'islands.migrants: must be a non-negative whole number',
+  );
   check(c.species.threshold > 0, 'species.threshold: must be positive');
   check(c.mutation.magnitude >= 0, 'mutation.magnitude: must not be negative');
   check(c.mutation.rateMultiplier >= 0, 'mutation.rateMultiplier: must not be negative');

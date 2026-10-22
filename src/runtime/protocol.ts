@@ -10,6 +10,7 @@ export type Command =
   | { type: 'step' }
   | { type: 'config'; path: string; value: number | boolean | string }
   | { type: 'select'; id: number | null }
+  | { type: 'island'; id: number; index: number }
   | { type: 'trigger'; kind: DisasterKind }
   | { type: 'save'; id: number }
   | { type: 'load'; id: number; text: string }

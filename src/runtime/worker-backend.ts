@@ -123,6 +123,12 @@ export class WorkerBackend implements Backend {
     return this.request<string>((id) => this.send({ type: 'save', id }));
   }
 
+  setIsland(index: number): Promise<void> {
+    return this.request<SimConfig>((id) => this.send({ type: 'island', id, index })).then(
+      () => undefined,
+    );
+  }
+
   trigger(kind: DisasterKind): void {
     this.send({ type: 'trigger', kind });
   }

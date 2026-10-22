@@ -1,4 +1,4 @@
-import { BARRIERS, type SimConfig } from '../sim/config';
+import { BARRIERS, BRAIN_TYPES, type SimConfig } from '../sim/config';
 import { getPath, setPath } from '../sim/config-path';
 
 /** A world rule the player can change from the panel. */
@@ -175,6 +175,61 @@ export const CONTROLS: readonly Control[] = [
     'creatures.signalCost',
   ),
   num(
+    'BRAIN',
+    'LEARN RATE',
+    'How strongly brains adapt during life, from experience. 0 turns learning off. Not inherited.',
+    0,
+    0.3,
+    0.005,
+    'learning.rate',
+  ),
+  num(
+    'BRAIN',
+    'FORGET',
+    'How fast what a creature learned fades back to the brain it was born with.',
+    0,
+    0.05,
+    0.001,
+    'learning.forgetting',
+  ),
+  num(
+    'BRAIN',
+    'ADD LINK',
+    'NEAT brains only: chance per birth of a new connection.',
+    0,
+    0.5,
+    0.01,
+    'brain.addConnectionRate',
+  ),
+  num(
+    'BRAIN',
+    'ADD NEURON',
+    'NEAT brains only: chance per birth of a new neuron.',
+    0,
+    0.3,
+    0.01,
+    'brain.addNodeRate',
+  ),
+  num(
+    'BRAIN',
+    'LINK COST',
+    'Energy burned per tick for each connection, so big brains have to pay their way.',
+    0,
+    0.0005,
+    0.00001,
+    'brain.connectionCost',
+  ),
+  num(
+    'ISLANDS',
+    'MIGRANTS',
+    'Creatures that leave each island at every migration, bound for the next island round the ring.',
+    0,
+    10,
+    1,
+    'islands.migrants',
+  ),
+  num('ISLANDS', 'EVERY', 'Ticks between migrations.', 50, 2000, 50, 'islands.interval'),
+  num(
     'PREDATION',
     'BITE POWER',
     'Energy a size-1 carnivore takes with one bite.',
@@ -296,6 +351,24 @@ export const CONTROLS: readonly Control[] = [
     8,
     1,
     'terrain.barrierGaps',
+    true,
+  ),
+  choice(
+    'NEW WORLD',
+    'BRAIN TYPE',
+    'MLP is a fixed network; RECURRENT adds memory; NEAT starts simple and evolves its own shape.',
+    BRAIN_TYPES,
+    'brain.type',
+    true,
+  ),
+  num(
+    'NEW WORLD',
+    'ISLANDS',
+    'Separate worlds joined by migration. 1 is a single world.',
+    1,
+    6,
+    1,
+    'islands.count',
     true,
   ),
 ];

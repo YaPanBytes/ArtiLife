@@ -3,6 +3,9 @@ import { OUT_REPRODUCE } from './brain';
 import { Creature } from './creature';
 import { Chronicler, SPECIATION_ANNOUNCE_GAP } from './chronicle';
 import { appetite, plantEfficiency, upkeep } from './energy';
+import { clamp } from './math';
+import { InnovationRegistry } from './neat';
+import { DEFAULT_STRUCTURE, type BrainContext, type BrainKind } from './brains';
 import { MODIFIER_NAMES, triggerDisaster, type DisasterKind, type Modifier } from './disasters';
 import { EventLog } from './events';
 import { MAX_VISION_RANGE, crossover, decodeTraits, mutate, randomGenome, setDiet } from './genome';
@@ -15,6 +18,11 @@ import { sense } from './senses';
 import { SpeciesTracker, dietClass } from './species';
 import { SpatialHash } from './spatial-hash';
 import { World } from './world';
+
+/** Energy that counts as a full-strength reward when brains learn. */
+const REWARD_SCALE = 5;
+/** How quickly a creature's expectation of reward follows what it actually gets. */
+const BASELINE_SPEED = 0.02;
 
 /** Running totals since the start of the run. */
 export interface SimStats {
@@ -61,6 +69,10 @@ export class Simulation {
   onBite?: (attacker: Creature, victim: Creature) => void;
   /** Called when a creature dies, before it is removed. */
   onDeath?: (creature: Creature, cause: DeathCause) => void;
+  /** Which kind of brain every creature in this world has. Fixed when the world is made. */
+  readonly brainKind: BrainKind;
+  /** Numbers handed out to NEAT connections and neurons, so genomes can be compared. */
+  readonly innovations: InnovationRegistry;
   private nextId = 0;
   private readonly hash: SpatialHash;
   private xs: Float64Array;
@@ -70,10 +82,20 @@ export class Simulation {
   private wants = new Float64Array(0);
   private readonly tileDemand: Float64Array;
 
-  constructor(overrides: DeepPartial<SimConfig> = {}) {
+  /**
+   * `innovations` can be shared with other worlds, so creatures that move between them
+   * keep meaningful NEAT numbering.
+   */
+  constructor(
+    overrides: DeepPartial<SimConfig> = {},
+    innovations: InnovationRegistry = new InnovationRegistry(),
+  ) {
     this.config = resolveConfig(overrides);
+    this.innovations = innovations;
+    this.brainKind = this.config.brain.type as BrainKind;
     this.species = new SpeciesTracker(
       () => this.config.species.threshold,
+      () => this.brainKind,
       (child, parent) => {
         // Most branchings are quiet drift. Announce a change of diet class, and not too often.
         if (dietClass(child.diet) === dietClass(parent.diet)) return;
@@ -124,7 +146,10 @@ export class Simulation {
         y,
         rng.range(-Math.PI, Math.PI),
         this.config.creatures.startEnergy,
-        randomGenome(rng),
+        randomGenome(rng, this.brainKind, this.innovations),
+        null,
+        0,
+        this.brainKind,
       );
       if (asFounder) this.species.addFounder(creature, this.tick);
       this.creatures.push(creature);
@@ -146,6 +171,7 @@ export class Simulation {
     for (const c of this.creatures) move(c, world, config);
     this.eatPhase();
     this.stats.bites += resolveBites(this.creatures, config, this.onBite).bites;
+    this.learnPhase();
     for (const c of this.creatures) {
       c.energy -= upkeep(c, config) * upkeepFactor;
       c.age++;
@@ -229,13 +255,43 @@ export class Simulation {
       const tile = world.tileIndex(c.x, c.y);
       const demand = tileDemand[tile];
       const share = demand <= world.food[tile] ? 1 : world.food[tile] / demand;
-      c.energy += wants[i] * share * plantEfficiency(c, config);
+      const gained = wants[i] * share * plantEfficiency(c, config);
+      c.energy += gained;
+      c.reward += gained;
     }
     for (let i = 0; i < n; i++) {
       const tile = world.tileIndex(creatures[i].x, creatures[i].y);
       if (tileDemand[tile] === 0) continue;
       world.food[tile] = Math.max(0, world.food[tile] - tileDemand[tile]);
       tileDemand[tile] = 0;
+    }
+  }
+
+  /** What mutation needs to know about this world's brains. */
+  private brainContext(): BrainContext {
+    const { brain } = this.config;
+    return {
+      kind: this.brainKind,
+      innovations: this.innovations,
+      structure: {
+        ...DEFAULT_STRUCTURE,
+        addConnection: brain.addConnectionRate,
+        addNode: brain.addNodeRate,
+      },
+    };
+  }
+
+  /** Let each brain adapt to what it just gained or lost, if learning is on. Then forget the reward. */
+  private learnPhase(): void {
+    const { rate, forgetting } = this.config.learning;
+    for (const c of this.creatures) {
+      if (rate > 0) {
+        // Learn from how much better or worse than expected this tick went.
+        const surprise = c.reward - c.rewardBaseline;
+        c.brain.learn(clamp(surprise / REWARD_SCALE, -1, 1), rate, forgetting);
+        c.rewardBaseline += BASELINE_SPEED * surprise;
+      }
+      c.reward = 0;
     }
   }
 
@@ -311,7 +367,7 @@ export class Simulation {
       paired.add(a).add(mate);
       a.energy -= birthCost / 2;
       mate.energy -= birthCost / 2;
-      newborns.push(this.birth(a, crossover(a.genome, mate.genome, this.rng)));
+      newborns.push(this.birth(a, crossover(a.genome, mate.genome, this.rng, this.brainKind)));
     }
     for (const child of newborns) creatures.push(child);
   }
@@ -338,15 +394,69 @@ export class Simulation {
       y,
       rng.range(-Math.PI, Math.PI),
       Math.min(maxEnergy, birthCost * birthEfficiency),
-      mutate(genome, rng, config.mutation.magnitude, config.mutation.rateMultiplier),
+      mutate(
+        genome,
+        rng,
+        config.mutation.magnitude,
+        config.mutation.rateMultiplier,
+        this.brainContext(),
+      ),
       parent.id,
       parent.generation + 1,
+      this.brainKind,
     );
     child.birthTick = this.tick;
     this.species.addChild(child, parent, this.tick);
     this.onBirth?.(child);
     return child;
   }
+  // Migration
+
+  /**
+   * Take creatures out of this world without killing them (so no death is counted
+   * or shown): they are about to turn up somewhere else.
+   */
+  detach(creatures: readonly Creature[]): void {
+    const leaving = new Set(creatures);
+    for (const c of leaving) this.species.remove(c, this.tick);
+    this.creatures = this.creatures.filter((c) => !leaving.has(c));
+  }
+
+  /**
+   * Bring in a creature from another world: same genes, energy and age, placed at a
+   * random spot and put into the nearest species here. Returns the newcomer.
+   */
+  receive(from: Creature): Creature {
+    const { world, rng } = this;
+    let x = 0;
+    let y = 0;
+    for (let attempt = 0; attempt < 1000; attempt++) {
+      x = rng.range(0, world.width);
+      y = rng.range(0, world.height);
+      if (world.isWalkable(x, y)) break;
+    }
+    const c = new Creature(
+      this.nextId++,
+      x,
+      y,
+      rng.range(-Math.PI, Math.PI),
+      from.energy,
+      Float32Array.from(from.genome),
+      null,
+      from.generation,
+      this.brainKind,
+    );
+    c.age = from.age;
+    c.birthTick = this.tick;
+    c.memory.set(from.memory);
+    const live = from.brain.liveWeights();
+    if (live) c.brain.setLiveWeights(live);
+    c.rewardBaseline = from.rewardBaseline;
+    this.species.adopt(c, this.tick);
+    this.creatures.push(c);
+    return c;
+  }
+
   // Disasters and temporary changes
 
   /** Make something happen to the world: a drought, a plague, newcomers. */

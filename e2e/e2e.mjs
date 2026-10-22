@@ -280,7 +280,7 @@ async function runMode(browser, mode) {
       /^artilife-seed7-tick\d+\.json$/.test(saveDownload.suggestedFilename()),
     saveDownload.suggestedFilename(),
   );
-  const savedTick = saved.tick;
+  const savedTick = saved.islands[0].tick;
 
   await page.locator('#panel input[type=number]').fill('99');
   await page.locator('#panel button', { hasText: 'GO' }).click();
@@ -291,13 +291,11 @@ async function runMode(browser, mode) {
   ok('LOAD restores the saved run', true);
   ok('and leaves it paused', await ev(() => window.artilife.view.paused));
 
-  await page
-    .locator('#panel input[type=file]')
-    .setInputFiles({
-      name: 'bad.json',
-      mimeType: 'application/json',
-      buffer: Buffer.from('{"nope":1}'),
-    });
+  await page.locator('#panel input[type=file]').setInputFiles({
+    name: 'bad.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('{"nope":1}'),
+  });
   await until(() =>
     document.querySelector('#panel .status')?.textContent?.includes('NOT AN ARTILIFE SAVE'),
   );
@@ -322,6 +320,58 @@ async function runMode(browser, mode) {
   await page.keyboard.press(' ');
   await page.waitForTimeout(800);
   await page.locator('label.control', { hasText: 'SOUND' }).locator('input').uncheck();
+
+  // Islands, and the other kinds of brain.
+  await page.locator('#panel select.inline').selectOption('ARCHIPELAGO');
+  await page.locator('#panel button', { hasText: 'START' }).click();
+  await until(() => window.artilife.backend.scene.islands.count === 3);
+  ok('the ARCHIPELAGO preset makes three islands', true);
+  const islandButtons = page.locator('#panel .wrap button', { hasText: /^\d:\d+$/ });
+  ok('the island switcher lists them', (await islandButtons.count()) === 3);
+  const mapOf = () =>
+    ev(() => Array.from(window.artilife.backend.world.terrain.slice(0, 300)).join(''));
+  const firstMap = await mapOf();
+  await page.keyboard.press('2');
+  await until(() => window.artilife.backend.scene.islands.active === 1);
+  ok('the 2 key switches to island 2, with its own map', (await mapOf()) !== firstMap);
+  await islandButtons.nth(2).click();
+  await until(() => window.artilife.backend.scene.islands.active === 2);
+  ok('the switcher buttons work too', true);
+  await page.keyboard.press(' ');
+  await page.waitForTimeout(400);
+  const [islandSave] = await Promise.all([
+    page.waitForEvent('download'),
+    page.locator('#panel button', { hasText: 'SAVE' }).click(),
+  ]);
+  const islandPath = await islandSave.path();
+  await page.locator('#panel input[type=number]').fill('5');
+  await page.locator('#panel select.inline').selectOption('DEFAULT');
+  await page.locator('#panel button', { hasText: 'START' }).click();
+  await until(() => window.artilife.backend.scene.islands.count === 1);
+  await page.locator('#panel input[type=file]').setInputFiles(islandPath);
+  await until(() => window.artilife.backend.scene.islands.count === 3);
+  await until(() => window.artilife.backend.scene.islands.active === 2);
+  ok('saving and loading keeps every island and the one on screen', true);
+
+  await page.locator('#panel select.inline').selectOption('EVOLVING BRAINS');
+  await page.locator('#panel button', { hasText: 'START' }).click();
+  await until(() => window.artilife.settings.brain.type === 'neat');
+  await until(() => window.artilife.backend.scene.count > 0);
+  await page.keyboard.press(' ');
+  await page.waitForTimeout(1500);
+  await page.keyboard.press(' ');
+  await ev(() => {
+    const a = window.artilife;
+    a.select(a.backend.scene.id[0]);
+  });
+  await page.locator('.tabs button', { hasText: 'INSPECT' }).click();
+  await page.waitForTimeout(700);
+  ok(
+    'a NEAT creature’s brain is drawn',
+    (await page.locator('dl.info dd').count()) > 5 &&
+      (await ink('#panel .tab:not([hidden]) canvas.chart')) > 300,
+  );
+  await page.locator('.tabs button', { hasText: 'RULES' }).click();
 
   const dims = await canvas.evaluate((c) => [c.clientWidth, c.clientHeight]);
   ok(

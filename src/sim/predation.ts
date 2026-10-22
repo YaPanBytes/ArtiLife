@@ -105,6 +105,7 @@ export function resolveBites(
     const c = creatures[i];
     const cost = c.biting ? biteCost : 0;
     c.energy = Math.min(maxEnergy, c.energy - cost + gains[i] - losses[i]);
+    c.reward += gains[i] - losses[i];
   }
   return { bites };
 }

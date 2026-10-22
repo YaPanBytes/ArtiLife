@@ -1,4 +1,5 @@
-import { TRAIT_COUNT, decodeTraits } from './genome';
+import type { BrainKind } from './brains';
+import { decodeTraits, genomeDifference } from './genome';
 
 export type DietClass = 'HERBIVORE' | 'OMNIVORE' | 'HUNTER';
 
@@ -8,20 +9,11 @@ export function dietClass(diet: number): DietClass {
 }
 
 /**
- * How different two genomes are, from 0 (identical). Body traits and brain
- * weights count equally: the root-mean-square gene difference within each part, averaged.
+ * How different two genomes are, from 0 (identical): body traits and brain genes
+ * count equally, each as a root-mean-square difference.
  */
-export function genomeDistance(a: Float32Array, b: Float32Array): number {
-  const n = Math.min(a.length, b.length);
-  let traitSum = 0;
-  let weightSum = 0;
-  for (let i = 0; i < n; i++) {
-    const d = a[i] - b[i];
-    if (i < TRAIT_COUNT) traitSum += d * d;
-    else weightSum += d * d;
-  }
-  const weightCount = Math.max(1, n - TRAIT_COUNT);
-  return Math.sqrt((traitSum / TRAIT_COUNT + weightSum / weightCount) / 2);
+export function genomeDistance(a: Float32Array, b: Float32Array, kind: BrainKind = 'mlp'): number {
+  return genomeDifference(a, b, kind);
 }
 
 export interface SpeciesInfo {
@@ -77,6 +69,7 @@ export class SpeciesTracker {
 
   constructor(
     private readonly threshold: () => number,
+    private readonly kind: () => BrainKind,
     private readonly onSpeciation?: (child: SpeciesInfo, parent: SpeciesInfo) => void,
     private readonly onExtinction?: (species: SpeciesInfo) => void,
   ) {}
@@ -128,11 +121,37 @@ export class SpeciesTracker {
     this.version++;
   }
 
+  /**
+   * Place a creature that arrived from elsewhere: in the closest living species, if
+   * its genome is within the threshold of that species' reference, else in a new species of its own.
+   */
+  adopt(c: Classifiable, tick: number): void {
+    let best: Tracked | null = null;
+    let bestDistance = Infinity;
+    for (const species of this.species.values()) {
+      if (species.count === 0) continue;
+      const d = genomeDistance(c.genome, species.ref, this.kind());
+      if (d < bestDistance) {
+        best = species;
+        bestDistance = d;
+      }
+    }
+    if (best && bestDistance <= this.threshold()) {
+      this.join(c, best);
+      c.speciesRef = best.ref;
+    } else {
+      const created = this.create(null, c.genome, tick);
+      this.join(c, created);
+      c.speciesRef = created.ref;
+    }
+    this.version++;
+  }
+
   /** Place a newborn, starting a new species if it has drifted too far from its parent's. */
   addChild(child: Classifiable, parent: Classifiable, tick: number): void {
     const parentSpecies = this.species.get(parent.speciesId);
     if (!parentSpecies) return;
-    if (genomeDistance(child.genome, parent.speciesRef) <= this.threshold()) {
+    if (genomeDistance(child.genome, parent.speciesRef, this.kind()) <= this.threshold()) {
       this.join(child, parentSpecies);
       child.speciesRef = parent.speciesRef;
     } else {

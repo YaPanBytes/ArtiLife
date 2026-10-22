@@ -73,6 +73,35 @@ export const PRESETS: readonly Preset[] = [
       food: { seasons: { enabled: true, lengthTicks: 4000, amplitude: 0.6, coldCost: 0.2 } },
     },
   },
+  {
+    name: 'EVOLVING BRAINS',
+    blurb:
+      'Brains start as simple wiring and grow new neurons and connections, at a small energy cost each. Open INSPECT on an old creature to see how its brain has grown.',
+    config: {
+      brain: { type: 'neat', addNodeRate: 0.3, addConnectionRate: 0.4, connectionCost: 0.00006 },
+    },
+  },
+  {
+    name: 'MEMORY MINDS',
+    blurb:
+      'Recurrent brains: hidden neurons feed back on themselves, giving creatures a short-term memory.',
+    config: { brain: { type: 'recurrent' } },
+  },
+  {
+    name: 'QUICK LEARNERS',
+    blurb:
+      'Creatures adapt their turning, speed and biting during life, from what they gain and lose. What they learn is not inherited.',
+    config: { learning: { rate: 0.05 } },
+  },
+  {
+    name: 'ARCHIPELAGO',
+    blurb:
+      'Three separate islands with their own maps. A few creatures sail to the next island every so often. Switch islands with the numbers 1 to 3.',
+    config: {
+      islands: { count: 3, interval: 400, migrants: 2 },
+      creatures: { initialCount: 80 },
+    },
+  },
 ];
 
 export function findPreset(name: string): Preset | undefined {

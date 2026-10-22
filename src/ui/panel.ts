@@ -12,6 +12,7 @@ import { CanvasSurface } from '../render/surface';
 import type { Overlay, RenderMode, ViewState } from '../render/view';
 import type { Analysis, CreatureDetail, Scene } from '../runtime/types';
 import type { SimConfig } from '../sim/config';
+import type { IslandInfo } from '../runtime/types';
 import { dietClass } from '../sim/species';
 import { DISASTER_INFO, DISASTER_KINDS, type DisasterKind } from '../sim/disasters';
 import { PRESETS } from '../presets';
@@ -28,6 +29,8 @@ export interface PanelActions {
   /** Make a disaster or introduction happen now. */
   trigger(kind: DisasterKind): void;
   toggleGlyph(): void;
+  /** Look at another island. */
+  setIsland(index: number): void;
   /** Download the run as a file. */
   save(): void;
   /** Replace the run with a saved file. */
@@ -64,6 +67,9 @@ export class Panel {
   private readonly seedInput: HTMLInputElement;
   private readonly inputs = new Map<Control, HTMLInputElement | HTMLSelectElement>();
   private soundBox!: HTMLInputElement;
+  private islandRow!: HTMLElement;
+  private islandKey = '';
+  private islandButtons: HTMLButtonElement[] = [];
   private presetSelect!: HTMLSelectElement;
   private statusLine!: HTMLElement;
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
@@ -194,6 +200,10 @@ export class Panel {
       }
       section.append(this.buildControl(control));
     }
+
+    // Which island to look at; filled in once there is more than one.
+    this.islandRow = el('div', '', 'wrap');
+    groups.get('ISLANDS')!.append(this.islandRow);
 
     const disasters = el('section');
     disasters.append(el('h2', 'DISASTERS'));
@@ -356,6 +366,29 @@ export class Panel {
 
   setSpeed(multiplier: number, tps?: number): void {
     this.speedLabel.textContent = tps === undefined ? `X${multiplier}` : `X${multiplier} ${tps}/S`;
+  }
+
+  /**
+   * Show a button per island with its population, when there are several. The
+   * buttons are kept, and only their text changes, so one can be clicked while the numbers move.
+   */
+  setIslands(info: IslandInfo): void {
+    const key = `${info.count}:${info.active}:${info.populations.join(',')}`;
+    if (key === this.islandKey) return;
+    this.islandKey = key;
+    this.islandRow.hidden = info.count <= 1;
+    if (this.islandButtons.length !== info.count) {
+      this.islandButtons = Array.from({ length: info.count }, (_, i) =>
+        button('', () => this.actions.setIsland(i)),
+      );
+      this.islandRow.replaceChildren(...this.islandButtons);
+    }
+    this.islandButtons.forEach((b, i) => {
+      const population = info.populations[i];
+      b.textContent = `${i + 1}:${population}`;
+      b.title = `Island ${i + 1}: ${population} creatures`;
+      b.classList.toggle('active', i === info.active);
+    });
   }
 
   /** Show a short message, which fades after a few seconds. */

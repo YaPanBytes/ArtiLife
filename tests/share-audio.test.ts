@@ -87,6 +87,10 @@ describe('presets', () => {
     expect(c('ISLAND CHAIN').terrain.barrier).toBe('river');
     expect(c('GARDEN').predation.biteDamage).toBe(0);
     expect(c('MATING SEASON').creatures.sexual).toBe(true);
+    expect(c('EVOLVING BRAINS').brain.type).toBe('neat');
+    expect(c('MEMORY MINDS').brain.type).toBe('recurrent');
+    expect(c('QUICK LEARNERS').learning.rate).toBeGreaterThan(0);
+    expect(c('ARCHIPELAGO').islands.count).toBe(3);
   });
 
   it('each run for a while without breaking', () => {

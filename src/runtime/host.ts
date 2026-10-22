@@ -1,11 +1,12 @@
 import { setPath } from '../sim/config-path';
-import { loadFromJson, saveToJson } from '../sim/serialize';
+import { Archipelago } from '../sim/archipelago';
+import { loadArchipelagoFromJson, saveArchipelagoToJson } from '../sim/serialize';
 import { resolveConfig, type SimConfig } from '../sim/config';
 import { describeBrain } from '../sim/brain-graph';
 import { TRAIT_COUNT } from '../sim/genome';
 import { MODIFIER_NAMES, type DisasterKind } from '../sim/disasters';
 import { seasonInfo } from '../sim/season';
-import { Simulation } from '../sim/simulation';
+import type { Simulation } from '../sim/simulation';
 import {
   EFFECT_BIRTH,
   EFFECT_DEATH,
@@ -30,7 +31,9 @@ const FRAME_MS = 1000 / 60;
  * no DOM dependency, so it can run on the page or in a worker.
  */
 export class SimHost implements Backend {
-  sim!: Simulation;
+  archipelago!: Archipelago;
+  /** Which island is on screen. */
+  active = 0;
   settings: SimConfig;
   world!: WorldInfo;
   readonly scene = new Scene();
@@ -53,21 +56,36 @@ export class SimHost implements Backend {
 
   readonly ready = Promise.resolve();
 
+  /** The island being looked at. */
+  get sim(): Simulation {
+    return this.archipelago.sims[this.active];
+  }
+
   newWorld(settings: SimConfig, warmup = 0): Promise<void> {
-    const sim = new Simulation(settings);
-    for (let i = 0; i < warmup; i++) sim.step();
-    this.adopt(sim, settings);
+    const archipelago = new Archipelago(settings);
+    for (let i = 0; i < warmup; i++) archipelago.step();
+    this.adopt(archipelago, settings, 0);
     return Promise.resolve();
   }
 
-  /** Make `sim` the running world: hook up the effect reporting and reset everything that referred to the old one. */
-  private adopt(sim: Simulation, settings: SimConfig): void {
+  /** Make `archipelago` the running world: hook up the effect reporting and reset everything that referred to the old one. */
+  private adopt(archipelago: Archipelago, settings: SimConfig, active: number): void {
     this.settings = settings;
-    this.sim = sim;
-    sim.onBirth = (c) => this.addEffect(EFFECT_BIRTH, c.x, c.y);
-    sim.onDeath = (c) => this.addEffect(EFFECT_DEATH, c.x, c.y);
-    sim.onBite = (_, victim) => this.addEffect(EFFECT_HIT, victim.x, victim.y);
-    const { world } = sim;
+    this.archipelago = archipelago;
+    this.active = active;
+    // Effects are drawn on the island being looked at, so only that island reports them.
+    for (const sim of archipelago.sims) {
+      sim.onBirth = (c) => sim === this.sim && this.addEffect(EFFECT_BIRTH, c.x, c.y);
+      sim.onDeath = (c) => sim === this.sim && this.addEffect(EFFECT_DEATH, c.x, c.y);
+      sim.onBite = (_, victim) =>
+        sim === this.sim && this.addEffect(EFFECT_HIT, victim.x, victim.y);
+    }
+    this.showIsland();
+  }
+
+  /** Point everything at the island now active: its map, no selection, no stale effects. */
+  private showIsland(): void {
+    const { world } = this.sim;
     this.world = {
       width: world.width,
       height: world.height,
@@ -80,15 +98,25 @@ export class SimHost implements Backend {
     this.refresh(true);
   }
 
+  setIsland(index: number): Promise<void> {
+    if (!Number.isInteger(index) || index < 0 || index >= this.archipelago.sims.length) {
+      return Promise.reject(new RangeError(`there is no island ${index + 1}`));
+    }
+    this.active = index;
+    this.showIsland();
+    return Promise.resolve();
+  }
+
   save(): Promise<string> {
-    return Promise.resolve(saveToJson(this.sim));
+    return Promise.resolve(saveArchipelagoToJson(this.archipelago, this.active));
   }
 
   load(text: string): Promise<SimConfig> {
     try {
-      const sim = loadFromJson(text);
-      this.adopt(sim, structuredClone(sim.config));
-      return Promise.resolve(structuredClone(sim.config));
+      const { archipelago, active } = loadArchipelagoFromJson(text);
+      const settings = structuredClone(archipelago.sims[0].config);
+      this.adopt(archipelago, settings, active);
+      return Promise.resolve(structuredClone(settings));
     } catch (error) {
       return Promise.reject(error);
     }
@@ -112,11 +140,12 @@ export class SimHost implements Backend {
 
   stepOnce(): void {
     this.paused = true;
-    this.sim.step();
+    this.archipelago.step();
   }
 
+  /** Rules are shared by every island. */
   setConfig(path: string, value: number | boolean | string): void {
-    setPath(this.sim.config, path, value);
+    for (const sim of this.archipelago.sims) setPath(sim.config, path, value);
     setPath(this.settings, path, value);
   }
 
@@ -149,7 +178,7 @@ export class SimHost implements Backend {
     const start = performance.now();
     let ran = 0;
     while (this.tickDebt >= 1) {
-      this.sim.step();
+      this.archipelago.step();
       this.tickDebt -= 1;
       ran++;
       if (performance.now() - start > TICK_BUDGET_MS) {
@@ -174,6 +203,11 @@ export class SimHost implements Backend {
     scene.season = seasonInfo(sim.tick, config);
     scene.stats = { ...sim.stats };
     scene.hazards = sim.modifiers.map((m) => MODIFIER_NAMES[m.kind]);
+    scene.islands = {
+      count: this.archipelago.sims.length,
+      active: this.active,
+      populations: this.archipelago.sims.map((island) => island.creatures.length),
+    };
     if (scene.food.length !== sim.world.food.length)
       scene.food = new Float32Array(sim.world.food.length);
     scene.food.set(sim.world.food);

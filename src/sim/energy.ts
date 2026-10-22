@@ -28,6 +28,7 @@ export function appetite(c: Creature, config: SimConfig): number {
 export function upkeep(c: Creature, config: SimConfig): number {
   const { basalCost, moveCost, senseCost, signalCost } = config.creatures;
   return (
+    config.brain.connectionCost * c.brain.connectionCount +
     basalCost * c.traits.size +
     moveCost * c.speed * c.speed * c.traits.size +
     senseCost * c.traits.visionRange +

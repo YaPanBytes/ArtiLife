@@ -62,6 +62,7 @@ export function attachInput(canvas: HTMLCanvasElement, game: Game): void {
     else if (e.key === '[') game.changeSpeed(-1);
     else if (e.key === ']') game.changeSpeed(1);
     else if (e.key === 'Escape') game.deselect();
+    else if (e.key >= '1' && e.key <= '6') void game.setIsland(Number(e.key) - 1);
     else if (e.key === 'g') game.toggleGlyph();
     else if (e.key === 'o') game.cycleOverlay(1);
   });

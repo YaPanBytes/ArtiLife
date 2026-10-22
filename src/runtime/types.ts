@@ -31,6 +31,8 @@ export class Scene {
   /** Age at which creatures die of old age, or 0 for never. */
   maxAge = 0;
   season: SeasonInfo | null = null;
+  /** Which island is on screen, how many there are, and how many creatures live on each. */
+  islands: IslandInfo = { count: 1, active: 0, populations: [0] };
   /** Names of the temporary rule changes in force, such as a drought. */
   hazards: string[] = [];
   /** Measured simulation speed, in ticks per second. */
@@ -85,6 +87,7 @@ export class Scene {
       maxAge: this.maxAge,
       season: this.season,
       hazards: this.hazards,
+      islands: this.islands,
       tps: this.tps,
       stats: { ...this.stats },
       food: this.food.slice(),
@@ -115,6 +118,7 @@ export class Scene {
     this.maxAge = frame.maxAge;
     this.season = frame.season;
     this.hazards = frame.hazards;
+    this.islands = frame.islands;
     this.tps = frame.tps;
     this.stats = frame.stats;
     this.food = frame.food;
@@ -150,6 +154,7 @@ export interface SceneFrame {
   maxAge: number;
   season: SeasonInfo | null;
   hazards: string[];
+  islands: IslandInfo;
   tps: number;
   stats: SimStats;
   food: Float32Array;
@@ -193,6 +198,13 @@ export interface Analysis {
   dietHistogram: number[];
 }
 
+/** The ring of islands, for the island switcher. */
+export interface IslandInfo {
+  count: number;
+  active: number;
+  populations: number[];
+}
+
 /** What the game needs from whatever runs the simulation. */
 export interface Backend {
   readonly world: WorldInfo;
@@ -209,6 +221,8 @@ export interface Backend {
 
   /** Start a fresh world. Resolves once it exists. */
   newWorld(settings: SimConfig, warmup?: number): Promise<void>;
+  /** Look at another island. Resolves once its world is ready to read. */
+  setIsland(index: number): Promise<void>;
   /** Make something happen: a drought, a plague, newcomers. */
   trigger(kind: DisasterKind): void;
   setPaused(paused: boolean): void;

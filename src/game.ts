@@ -96,6 +96,7 @@ export class Game {
       applyLive: (control, value) => this.applyLive(control, value),
       trigger: (kind) => this.backend.trigger(kind),
       toggleGlyph: () => this.toggleGlyph(),
+      setIsland: (index) => void this.setIsland(index),
       cycleOverlay: (d) => this.cycleOverlay(d),
       save: () => void this.save(),
       loadFile: (file) => void this.loadFile(file),
@@ -130,6 +131,14 @@ export class Game {
     await this.backend.newWorld(this.settings, warmup);
     this.resetView();
     this.panel.setSeed(seed);
+  }
+
+  /** Look at another island: its own map, creatures and statistics. */
+  async setIsland(index: number): Promise<void> {
+    if (index === this.backend.scene.islands.active || index >= this.backend.scene.islands.count)
+      return;
+    await this.backend.setIsland(index);
+    this.resetView();
   }
 
   /** Point the camera and renderer at the backend's current world. */
@@ -332,6 +341,7 @@ export class Game {
 
     this.renderer.render(scene, world, detail, analysis, this.view);
     this.panel.setSpeed(SPEEDS[this.speedIndex], this.view.paused ? undefined : scene.tps);
+    this.panel.setIslands(scene.islands);
     this.panel.update({ scene, detail, analysis, view: this.view }, time);
   }
 

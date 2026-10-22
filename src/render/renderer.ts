@@ -130,6 +130,10 @@ export class Renderer {
     }
     this.drawTicker();
     let labelRow = 0;
+    if (scene.islands.count > 1) {
+      const { active, count } = scene.islands;
+      this.drawLabel(`ISLAND ${active + 1}/${count}`, labelRow++, COLORS.white);
+    }
     if (view.overlay !== 'none') {
       this.drawLabel(`SHOWING ${OVERLAY_NAMES[view.overlay]}`, labelRow++, COLORS.white);
     }

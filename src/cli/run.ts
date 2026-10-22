@@ -2,7 +2,7 @@
 // Usage: npm run sim -- [--seed 1] [--ticks 20000] [--every 1000] [--preset lush_eden] [--set path=value]
 import { findPreset } from '../presets';
 import { TRAIT_ORDER } from '../sim/genome';
-import { Simulation } from '../sim/simulation';
+import { Archipelago } from '../sim/archipelago';
 
 function arg(name: string, fallback: number): number {
   const i = process.argv.indexOf(`--${name}`);
@@ -19,7 +19,13 @@ function overrides(): Record<string, unknown> {
     let node = out;
     for (const key of keys.slice(0, -1)) node = (node[key] ??= {}) as Record<string, unknown>;
     node[keys[keys.length - 1]] =
-      value === 'true' ? true : value === 'false' ? false : Number(value);
+      value === 'true'
+        ? true
+        : value === 'false'
+          ? false
+          : Number.isNaN(Number(value))
+            ? value
+            : Number(value);
   });
   return out;
 }
@@ -50,7 +56,8 @@ if (process.argv.includes('--preset') && !preset) {
   console.error(`unknown preset "${presetName}"`);
   process.exit(1);
 }
-const sim = new Simulation(mergeOverrides(preset?.config ?? {}, overrides(), seed));
+const world = new Archipelago(mergeOverrides(preset?.config ?? {}, overrides(), seed));
+const sim = world.sims[0];
 
 const traits = TRAIT_ORDER.filter((t) => t !== 'hue');
 console.log(
@@ -86,14 +93,19 @@ function report(): void {
     mean((c) => c.energy).toFixed(0),
     ...traits.map((t) => mean((c) => c.traits[t]).toFixed(3)),
   ];
-  console.log(row.join('\t'));
+  console.log(
+    row.join('\t') +
+      (world.sims.length > 1
+        ? `\tislands: ${world.sims.map((i) => i.creatures.length).join('/')}`
+        : ''),
+  );
 }
 
 report();
 for (let t = 1; t <= ticks; t++) {
-  sim.step();
+  world.step();
   if (t % every === 0) report();
-  if (sim.creatures.length === 0) {
+  if (world.sims.every((island) => island.creatures.length === 0)) {
     console.log(`extinct at tick ${sim.tick}`);
     break;
   }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveConfig } from '../src/sim/config';
+import { Archipelago } from '../src/sim/archipelago';
 import { Simulation } from '../src/sim/simulation';
 import { CONTROLS, decimalsFor } from '../src/ui/controls';
 
@@ -51,17 +52,21 @@ describe('controls', () => {
     for (const end of ['min', 'max'] as const) {
       const config = resolveConfig({ world: { width: 32, height: 32 } });
       for (const c of CONTROLS) if (c.kind === 'number') c.set(config, c[end]!);
-      // Also switch on every toggle and use the last choice of each option list.
+      // Also switch on every toggle and use the first or last choice of each option list.
       for (const c of CONTROLS) if (c.kind === 'toggle') c.set(config, end === 'max');
-      for (const c of CONTROLS)
+      for (const c of CONTROLS) {
         if (c.kind === 'choice')
           c.set(config, c.choices![end === 'max' ? c.choices!.length - 1 : 0]);
-      config.creatures.initialCount = Math.min(config.creatures.initialCount, 100);
-      const sim = new Simulation(config);
-      for (let i = 0; i < 60; i++) sim.step();
-      for (const creature of sim.creatures) {
-        expect(Number.isFinite(creature.energy)).toBe(true);
-        expect(Number.isFinite(creature.x) && Number.isFinite(creature.y)).toBe(true);
+      }
+      config.creatures.initialCount = Math.min(config.creatures.initialCount, 60);
+      const world = new Archipelago(config);
+      for (let i = 0; i < 80; i++) world.step();
+      for (const sim of world.sims) {
+        for (const creature of sim.creatures) {
+          expect(Number.isFinite(creature.energy)).toBe(true);
+          expect(Number.isFinite(creature.x) && Number.isFinite(creature.y)).toBe(true);
+          expect(creature.outputs.every(Number.isFinite)).toBe(true);
+        }
       }
     }
   });

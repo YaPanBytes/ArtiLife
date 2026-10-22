@@ -61,6 +61,12 @@ export class WorkerRuntime {
           this.post({ type: 'saved', id: command.id, text: await this.host.save() });
         });
         break;
+      case 'island':
+        this.guard(command.id, async () => {
+          await this.host?.setIsland(command.index);
+          this.announceWorld(command.id);
+        });
+        break;
       case 'paused':
         this.host?.setPaused(command.value);
         break;

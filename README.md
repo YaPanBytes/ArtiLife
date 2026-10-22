@@ -4,7 +4,7 @@ An artificial-life ecosystem. Creatures with small neural-net brains and heritab
 
 You change the rules of the world (food supply, metabolic cost, mutation rate, terrain, disasters) and watch what evolves: grazing herds, ambush predators, scavengers, parasites, boom-and-bust cycles, and strategies nobody designed.
 
-> **Status: early development.** Steps 1 to 8 of the [implementation plan](#implementation-plan) are done: the world and food field, creatures with genomes, neural-net brains, vision and movement, a full life cycle (eating, energy costs, death, reproduction, mutation), the NES-style pixel renderer with live controls, predation with a diet gene, and analysis tools (inspector with a live brain graph, charts, a species tree, an event log, a glyph view and colour overlays). Populations sustain themselves, evolve, and (with the default rules) split into plant eaters and hunters. Sections marked _(planned)_ are targets, not features.
+> **Status: all nine steps of the [implementation plan](#implementation-plan) are built.** The world and food field, creatures with genomes and brains, a full life cycle, a NES-style pixel renderer with live controls, predation, analysis tools (brain graph, charts, species tree, event log), richer worlds (barriers, seasons, disasters, sexual reproduction, signals), saving and sharing, a worker for the simulation, and the stretch goals: three kinds of brain (one whose shape evolves), learning within a lifetime, and islands with migration. See [What the experiments showed](#what-the-experiments-showed) for what is and isn't proven.
 
 ## Core idea
 
@@ -16,7 +16,7 @@ Evolution happens because three things are true, and nothing else is imposed:
 
 Anything that reproduces more than it dies spreads. Roles like "predator" or "herbivore" are not coded in. They are regions of genome space that evolution may or may not find, depending on the world's rules.
 
-## How the simulation works _(planned)_
+## How the simulation works
 
 ### World
 
@@ -30,14 +30,37 @@ Each creature has:
 
 | Part            | Contents                                                                                                                                      |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Genome**      | A flat array of floats: body traits plus all brain weights.                                                                                   |
+| **Genome**      | A flat array of floats: body traits, then the brain's genes (for the default brain, every weight).                                            |
 | **Body traits** | Size, max speed, vision range and field of view, diet (plant↔meat efficiency), metabolic rate, colour, reproduction threshold, mutation rate. |
 | **State**       | Position, heading, energy, age, generation, lineage ID.                                                                                       |
-| **Brain**       | A small feed-forward neural net with a few memory neurons that carry state between ticks.                                                     |
+| **Brain**       | A small neural net with a few memory neurons that carry state between ticks. One of three kinds (below).                                      |
 
 **Brain inputs:** 5 vision rays across the field of view, each reporting nearby food, nearby obstacles (water and rock), the nearest creature, its size relative to the viewer, its diet (carnivores look toothy) and its call. Then own energy, own speed, food on the current tile, whether it was just bitten, and 2 memory neurons.
 
 **Brain outputs:** turn, thrust, reproduce, bite and call, plus the 2 memory values for the next tick.
+
+### Brains
+
+The world's `brain.type` (chosen when a world is made) is one of:
+
+- **MLP** (the default): inputs, one hidden layer of 10 neurons, outputs. The shape is fixed; evolution changes the weights.
+- **Recurrent:** the same, except each hidden neuron also sees all the hidden neurons' values from the previous tick. That gives a creature a short-term memory beyond its two memory neurons.
+- **NEAT:** a brain whose _shape_ evolves, in the style of NEAT. The genome is a list of connections between neurons. Creatures start with every sensor wired straight to every output, and a mutation can add a connection or split one with a new neuron (the old connection is switched off, and the new path starts out carrying about the same signal). Each new connection and neuron gets a number from a shared register, so the same change in two creatures has the same number, and genomes can be lined up gene by gene for crossover and for measuring how different they are. Connections all update together, so a signal takes a tick to cross each step. Size is capped (24 hidden neurons, 700 connections), and `LINK COST` can charge energy for every connection so that growth must pay for itself.
+
+The inspector draws whichever brain a creature has, including connections between hidden neurons (recurrent) or the neurons NEAT has added.
+
+### Learning within a lifetime
+
+Set `LEARN RATE` above zero and brains adapt during life. The rule is a reward-modulated Hebbian one: when a creature gains energy from a meal or a bite, or loses it to one, the connections into its **turn, thrust and bite** outputs between neurons that were active together are strengthened for a gain and weakened for a loss. Two details matter:
+
+- **Only surprises are learned from.** Each creature keeps a running average of what it normally gains, and learns from the difference. Without this, steady food made every behaviour look good and brains locked into whatever they happened to be doing (see below).
+- **Only the last layer, and only the outputs a food reward says something about.** A meal tells a creature nothing about whether to reproduce or call.
+
+Changes fade back towards the inherited brain at `FORGET`, and are **not inherited**: a child is born with its parent's genome, not its parent's lessons. Learned weights are saved and loaded with the run.
+
+### Islands
+
+Set `ISLANDS` above 1 (when making a world) and you get that many separate worlds, each with its own seed and map, run side by side. Every `EVERY` ticks, `MIGRANTS` creatures from each island are carried to the next island round the ring, keeping their genes, energy and age and landing at a random spot. They join the nearest species on arrival, or found a new one. Rules are shared by all islands; a disaster happens only on the island you are looking at. Switch islands with the number keys or the buttons in the panel (each shows its population). With one island, or no migrants, nothing changes. A saved run keeps every island.
 
 ### Energy economy
 
@@ -78,6 +101,8 @@ All of these are editable in the side panel while the sim runs, except the "new 
 - **Predation:** bite power, bite cost, meat yield, diet trade-off, how weak a plant eater's bite is.
 - **Life:** birth cost, maximum age, population cap, sexual reproduction (and mating range), the cost of calling.
 - **Evolution:** mutation rate and size.
+- **Brain:** learning rate and forgetting, and for NEAT brains how often connections and neurons are added and what each connection costs.
+- **Islands:** how many creatures migrate, and how often.
 - **Disasters** (buttons, they happen immediately):
   - **Drought:** plants nearly stop regrowing for 1,500 ticks.
   - **Ice age:** regrowth at 40% and upkeep 40% higher, for 3,000 ticks.
@@ -86,11 +111,11 @@ All of these are editable in the side panel while the sim runs, except the "new 
   - **Meteor:** kills everything near a random spot and scorches the plants there.
   - **+Hunters / +Grazers:** introduce 15 hunters or 30 plant eaters with fresh random brains, as a new species.
   - Active droughts and ice ages are shown on the playfield, and each disaster is announced in the event log.
-- **New world:** water, rock, soil unevenness, starting population, barrier type (none, river, wall), number of barriers and gaps in them, and the seed.
+- **New world:** water, rock, soil unevenness, starting population, barrier type (none, river, wall), number of barriers and gaps in them, the kind of brain, the number of islands, and the seed.
 
 ## Visual style
 
-ArtiLife looks like an 8-bit NES game, with the information density of Dwarf Fortress. References: _The Legend of Zelda_ (NES) for the overworld and HUD, and _Dwarf Fortress_ (ASCII and tileset modes) for the dense, readable status display. Items marked _(planned)_ are not built yet.
+ArtiLife looks like an 8-bit NES game, with the information density of Dwarf Fortress. References: _The Legend of Zelda_ (NES) for the overworld and HUD, and _Dwarf Fortress_ (ASCII and tileset modes) for the dense, readable status display.
 
 **Rendering**
 
@@ -131,8 +156,8 @@ ArtiLife looks like an 8-bit NES game, with the information density of Dwarf For
 - **SHARE** copies a link that starts a world with your current seed and rules. The link holds only the settings that differ from the defaults, so it is short. Because the simulation is deterministic, the same link always gives the same world and, started from the beginning, the same run, provided nothing was changed or triggered along the way; it does not capture a run in progress (use SAVE for that).
 - **PHOTO** saves a picture of the screen, enlarged four times with no smoothing.
 - **Presets** start a new world with a named set of rules. Hover over a preset to read what to look for:
-  - **DEFAULT**, **LUSH EDEN** (plenty of food), **DUST BOWL** (barren soil with fertile patches), **ICE AGE** (long seasons with a harsh winter), **ISLAND CHAIN** (rivers cut the world into regions), **GARDEN** (biting does nothing: a world without hunting), **PREDATOR WORLD** (hunting pays so well that hunters boom and crash) and **MATING SEASON** (sexual reproduction with seasons).
-  - Each was run on at least one seed for 24,000 ticks and survived. The seed you have set is kept, and results differ by seed.
+  - **DEFAULT**, **LUSH EDEN** (plenty of food), **DUST BOWL** (barren soil with fertile patches), **ICE AGE** (long seasons with a harsh winter), **ISLAND CHAIN** (rivers cut the world into regions), **GARDEN** (biting does nothing: a world without hunting), **PREDATOR WORLD** (hunting pays so well that hunters boom and crash), **MATING SEASON** (sexual reproduction with seasons), **EVOLVING BRAINS** (NEAT brains that grow), **MEMORY MINDS** (recurrent brains), **QUICK LEARNERS** (learning within a lifetime) and **ARCHIPELAGO** (three islands with migration).
+  - Each was run on at least one seed for 20,000 to 24,000 ticks and survived. The seed you have set is kept, and results differ by seed.
 - **SOUND** switches on optional chiptune effects for births, deaths, bites and big events (off by default).
 
 **Views and tools**
@@ -144,10 +169,6 @@ ArtiLife looks like an 8-bit NES game, with the information density of Dwarf For
 - **STATS:** population over time (with the hunters' share in red), the average body and diet traits each scaled to their range, number of species alive, the diet distribution right now, and a **species tree** (time runs left to right; each species is a bar coloured by diet, grey once extinct, joined to the species it branched from).
 - **INSPECT:** for the followed creature: its parent, generation, age, energy, species and every trait, plus a live **brain graph**. Sensors are on the left, hidden neurons in the middle and actions on the right; red lines are positive connections and blue lines negative, and the ones carrying signal this tick are bright. Neuron colour shows its activation.
 - **LOG:** the event log, newest first.
-
-**Planned**
-
-- Stretch goals (step 9): brains whose structure evolves, recurrent brains, learning within a lifetime, and island worlds with migration.
 
 ## Tech
 
@@ -167,7 +188,7 @@ Layout:
 
 ```
 src/
-  sim/        # world, creatures, brain, genome, energy, species, history, events (no DOM)
+  sim/        # world, creatures, brains (MLP, recurrent, NEAT), genome, energy, species, islands, history, events (no DOM)
   runtime/    # SimHost, the worker and its proxy: publish flat Scene/Analysis snapshots
   presets.ts  # named sets of rules
   share.ts    # share codes and links
@@ -191,7 +212,18 @@ e2e/          # browser tests
 6. **Analysis tools** _(done)_: inspector, brain viewer, charts, lineage tracking, event log, glyph (ASCII) mode, colour overlays.
 7. **Richer worlds** _(done)_: terrain barriers, seasonal cold, disasters, sexual reproduction, creature signals.
 8. **Polish** _(done)_: save/load, shareable seeds, performance pass (profiled and optimised, Web Worker), presets, screenshots, optional sound.
-9. **Stretch**: NEAT-style brain topology evolution, recurrent brains, learning within a lifetime, multi-world islands with migration.
+9. **Stretch** _(done)_: NEAT-style brain topology evolution, recurrent brains, learning within a lifetime, multi-world islands with migration.
+
+## What the experiments showed
+
+These are my own runs, kept honest; several are small, so treat them as indications.
+
+- **Predators emerge on their own** with the default rules: in four seeds run for 50,000 ticks (before the later features were added), hunters appeared within a few thousand ticks and settled at a third to a half of the population, and worlds of 100 to 200 creatures survived throughout. The result is sensitive to the price of a bite and to how costly it is to give up eating plants: too cheap and hunters wipe out their prey; too dear and they never appear.
+- **Different seeds go different ways.** Some seeds end up all plant eaters, some mostly hunters; sizes, speeds and fields of view settle at different values. That variety is the point, but it also means no single run shows "the" result.
+- **Speed.** About 5 microseconds per creature per tick after optimisation (down from 7.5), roughly x11 normal speed at 200 creatures. See [Speed](#speed).
+- **Recurrent and NEAT worlds survive** (four of four seeds each, 12,000 ticks), with the same predator-prey patterns.
+- **NEAT brains barely grow under the default rates.** After 12,000 ticks the average had fewer than one hidden neuron and about 260 connections (the starting wiring is about 270): added neurons mostly don't persist, because nothing in these worlds rewards extra computation. With much higher rates (a new neuron in 30% of births, a new connection in 40%) they do grow, to 3 to 15 hidden neurons, and the world stays healthy. That is what the EVOLVING BRAINS preset uses. I haven't shown that the extra structure does anything useful.
+- **Learning: a bad first version, then a small gain.** My first learning rule (reinforce whatever was active when food arrived) made worlds collapse: at a low rate two of four seeds went extinct, at a higher rate all four, because creatures entrenched whatever they were doing, including not reproducing. Adding the reward baseline and limiting learning to the action outputs fixed that. Over 12 seeds, learning at 0.03 gave about 10% more births (higher in 10 of 12 seeds), but no clear difference in population size or average energy. So: a small, probably real benefit, not a dramatic one.
 
 ## Things to watch for
 

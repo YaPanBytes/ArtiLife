@@ -286,3 +286,8 @@ canvas#screen {
   font-size: 7px;
   line-height: 1.6;
 }
+
+#panel .wrap button.active {
+  background: var(--blue-dark);
+  border-color: var(--white);
+}

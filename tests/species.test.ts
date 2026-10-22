@@ -61,6 +61,7 @@ describe('SpeciesTracker', () => {
     const extinct: SpeciesInfo[] = [];
     const tracker = new SpeciesTracker(
       () => threshold,
+      () => 'mlp',
       (child, parent) => branches.push([child, parent]),
       (s) => extinct.push(s),
     );
