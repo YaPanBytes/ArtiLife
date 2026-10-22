@@ -1,23 +1,22 @@
-// Placeholder entry point: draws the generated world to the 256x224 buffer to
-// check the scaffold end to end. The real renderer replaces this in step 4.
-import { resolveConfig } from './sim/config';
-import { Rng } from './sim/rng';
-import { Terrain, World } from './sim/world';
+// Placeholder entry point: draws the world and creatures to the 256x224 buffer to
+// check the simulation end to end. The real renderer replaces this in step 4.
+import { Simulation } from './sim/simulation';
+import { Terrain } from './sim/world';
 
-const config = resolveConfig();
-const world = new World(config, new Rng(config.seed));
+const sim = new Simulation();
+const { world, config } = sim;
 
 const canvas = document.getElementById('screen') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 const image = ctx.createImageData(canvas.width, canvas.height);
+const sx = canvas.width / world.width;
+const sy = canvas.height / world.height;
 
-function draw(): void {
+function drawWorld(): void {
   const px = image.data;
   for (let y = 0; y < canvas.height; y++) {
     for (let x = 0; x < canvas.width; x++) {
-      const tx = Math.floor((x * world.width) / canvas.width);
-      const ty = Math.floor((y * world.height) / canvas.height);
-      const i = ty * world.width + tx;
+      const i = Math.floor(y / sy) * world.width + Math.floor(x / sx);
       let r = 0,
         g = 0,
         b = 0;
@@ -37,10 +36,18 @@ function draw(): void {
   ctx.putImageData(image, 0, 0);
 }
 
-let tick = 0;
+function drawCreatures(): void {
+  for (const c of sim.creatures) {
+    ctx.fillStyle = `hsl(${Math.round(c.traits.hue * 360)} 80% 45%)`;
+    const size = Math.max(2, Math.round(c.traits.size * 2));
+    ctx.fillRect(Math.round(c.x * sx - size / 2), Math.round(c.y * sy - size / 2), size, size);
+  }
+}
+
 function frame(): void {
-  world.stepFood(tick++);
-  draw();
+  sim.step();
+  drawWorld();
+  drawCreatures();
   requestAnimationFrame(frame);
 }
 frame();

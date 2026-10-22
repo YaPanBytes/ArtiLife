@@ -4,7 +4,7 @@ An artificial-life ecosystem. Creatures with small neural-net brains and heritab
 
 You change the rules of the world (food supply, metabolic cost, mutation rate, terrain, disasters) and watch what evolves: grazing herds, ambush predators, scavengers, parasites, boom-and-bust cycles, and strategies nobody designed.
 
-> **Status: early development.** Step 1 of the [implementation plan](#implementation-plan) is done: the project scaffold, seeded RNG, config, world grid with food field, and spatial hash. There are no creatures and no real renderer yet. Sections marked _(planned)_ are targets, not features.
+> **Status: early development.** Steps 1 and 2 of the [implementation plan](#implementation-plan) are done: the world and food field, plus creatures with genomes, neural-net brains, vision and movement. Creatures move and sense, but they don't yet eat, use energy, die or reproduce, and there is no real renderer yet. Sections marked _(planned)_ are targets, not features.
 
 ## Core idea
 
@@ -35,9 +35,9 @@ Each creature has:
 | **State**       | Position, heading, energy, age, generation, lineage ID.                                                                                       |
 | **Brain**       | A small feed-forward neural net with a few memory neurons that carry state between ticks.                                                     |
 
-**Brain inputs:** vision rays (distance to and kind of food / creature / wall, plus the relative size and colour of what is seen), own energy, own speed, memory neurons.
+**Brain inputs:** 5 vision rays across the field of view, each reporting nearby food, nearby obstacles (water and rock), the nearest creature and its size relative to the viewer. Then own energy, own speed, food on the current tile, and 2 memory neurons. Colour perception comes later, with signals.
 
-**Brain outputs:** turn, thrust, bite/eat, reproduce, and optionally a signal (a colour or sound others can perceive).
+**Brain outputs:** turn and thrust, plus the 2 memory values for the next tick. Bite/eat, reproduce and an optional signal (a colour or sound others can perceive) are added in later steps.
 
 ### Energy economy
 
@@ -130,7 +130,7 @@ tests/
 ## Implementation plan
 
 1. **Foundation** _(done)_: project scaffold, seeded RNG, config schema, world grid and food field, spatial hash.
-2. **Creatures and brains**: genome, trait decoding, MLP brain, vision rays, movement physics.
+2. **Creatures and brains** _(done)_: genome, trait decoding, MLP brain, vision rays, movement physics.
 3. **Energy and life cycle**: eating, metabolism, death, asexual reproduction, mutation. First evolving run.
 4. **Renderer and controls**: pixel renderer (NES palette, tile map, creature sprites with walk frames), Zelda-style HUD with minimap, pause/speed, live parameter sliders.
 5. **Predation and diet**: bite mechanic, diet gene, meat vs. plant efficiency. This is where predators can first appear.
@@ -157,7 +157,7 @@ npm run dev       # start the dev server (currently shows a placeholder map view
 npm run build     # type-check and build for production
 ```
 
-There is nothing to watch yet beyond a placeholder view of the generated map with regrowing food; creatures arrive in steps 2 and 3.
+There is nothing to watch yet beyond a placeholder view: the generated map with regrowing food, and creatures with random brains wandering around it. Eating, energy and evolution arrive in step 3.
 
 ## License
 

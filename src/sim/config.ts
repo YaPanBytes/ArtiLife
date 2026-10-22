@@ -10,6 +10,18 @@ export interface SimConfig {
     width: number;
     height: number;
   };
+  creatures: {
+    /** Creatures spawned at the start. */
+    initialCount: number;
+    /** Energy a new creature starts with. */
+    startEnergy: number;
+    /** Energy a creature can hold at most. */
+    maxEnergy: number;
+    /** Fastest turn, in radians per tick, when the brain's turn output is +/-1. */
+    maxTurnRate: number;
+    /** How quickly speed follows the commanded speed (0-1 per tick). */
+    speedInertia: number;
+  };
   terrain: {
     /** Approximate size of terrain features, in tiles. */
     scale: number;
@@ -42,6 +54,13 @@ export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartia
 export const DEFAULT_CONFIG: SimConfig = {
   seed: 1,
   world: { width: 64, height: 64 },
+  creatures: {
+    initialCount: 60,
+    startEnergy: 50,
+    maxEnergy: 100,
+    maxTurnRate: 0.3,
+    speedInertia: 0.3,
+  },
   terrain: { scale: 16, waterFraction: 0.1, rockFraction: 0.05, fertilityContrast: 0.6 },
   food: {
     maxPerTile: 10,
@@ -85,6 +104,20 @@ export function resolveConfig(overrides: DeepPartial<SimConfig> = {}): SimConfig
   check(Number.isInteger(c.seed), 'seed: must be an integer');
   check(isPositiveInt(c.world.width), 'world.width: must be a positive integer');
   check(isPositiveInt(c.world.height), 'world.height: must be a positive integer');
+  check(
+    Number.isInteger(c.creatures.initialCount) && c.creatures.initialCount >= 0,
+    'creatures.initialCount: must be a non-negative integer',
+  );
+  check(c.creatures.startEnergy > 0, 'creatures.startEnergy: must be positive');
+  check(
+    c.creatures.maxEnergy >= c.creatures.startEnergy,
+    'creatures.maxEnergy: must be at least startEnergy',
+  );
+  check(c.creatures.maxTurnRate >= 0, 'creatures.maxTurnRate: must not be negative');
+  check(
+    isFraction(c.creatures.speedInertia) && c.creatures.speedInertia > 0,
+    'creatures.speedInertia: must be above 0 and at most 1',
+  );
   check(c.terrain.scale >= 1, 'terrain.scale: must be at least 1');
   check(isFraction(c.terrain.waterFraction), 'terrain.waterFraction: must be between 0 and 1');
   check(isFraction(c.terrain.rockFraction), 'terrain.rockFraction: must be between 0 and 1');

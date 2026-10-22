@@ -1,0 +1,39 @@
+import { Brain, INPUT_COUNT, OUTPUT_COUNT, OUT_MEMORY, MEMORY_SIZE } from './brain';
+import { GENOME_LENGTH, brainWeights, decodeTraits, type Traits } from './genome';
+import { SENSE_INPUT_COUNT } from './senses';
+
+export class Creature {
+  readonly traits: Traits;
+  readonly brain: Brain;
+  /** Brain inputs: senses, then memory. Refilled every tick. */
+  readonly inputs = new Float32Array(INPUT_COUNT);
+  readonly outputs = new Float32Array(OUTPUT_COUNT);
+  /** Memory neuron values carried to the next tick. */
+  readonly memory = new Float32Array(MEMORY_SIZE);
+  age = 0;
+  /** Current speed in tiles per tick, along the heading. */
+  speed = 0;
+
+  constructor(
+    readonly id: number,
+    public x: number,
+    public y: number,
+    /** Radians; 0 points along +x, and angles grow clockwise on screen (+y is down). */
+    public heading: number,
+    public energy: number,
+    readonly genome: Float32Array,
+  ) {
+    if (genome.length !== GENOME_LENGTH) {
+      throw new RangeError(`genome needs ${GENOME_LENGTH} genes, got ${genome.length}`);
+    }
+    this.traits = decodeTraits(genome);
+    this.brain = new Brain(brainWeights(genome));
+  }
+
+  /** Run the brain on the senses already written to `inputs`, and store the new memory. */
+  think(): void {
+    this.inputs.set(this.memory, SENSE_INPUT_COUNT);
+    this.brain.think(this.inputs, this.outputs);
+    this.memory.set(this.outputs.subarray(OUT_MEMORY, OUT_MEMORY + MEMORY_SIZE));
+  }
+}
