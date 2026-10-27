@@ -267,3 +267,7 @@ It prints one row every N ticks: population, births, deaths by starvation, by be
 ## License
 
 To be decided.
+
+## Deploying
+
+`npm run build` writes a static site to `dist/` with relative paths, so it works from any folder of any web host. The workflow in `.github/workflows/pages.yml` type-checks, tests, builds and publishes it to GitHub Pages on every push to `main`. One-time setup: in the repository's Settings > Pages, set Source to "GitHub Actions". The game then lives at `https://<user>.github.io/<repo>/`.
